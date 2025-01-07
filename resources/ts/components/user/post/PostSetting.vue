@@ -4,6 +4,7 @@ import { defineEmits, defineProps } from 'vue';
 const props = defineProps<{
   showModal: boolean;
   postSetting: Object
+  isEdit: boolean
 }>();
 
 const emits = defineEmits<{
@@ -25,7 +26,7 @@ function updateSetting() {
 </script>
 
 <template>
-  <v-dialog v-model="props.showModal" max-width="800px" persistent>
+  <v-dialog v-model="props.showModal" max-width="300px" class="post-setting-dialog">
     <v-card>
       <v-card-title class="text-lg">
         <div class="flex items-center justify-between w-full">
@@ -50,7 +51,7 @@ function updateSetting() {
         </div>
       </v-card-text>
       <v-card-actions class="flex justify-between">
-        <v-btn color="primary" @click="updateSetting" class="px-6 py-2">Add new File</v-btn>
+        <v-btn color="primary" @click="updateSetting" class="px-6 py-2">{{ isEdit ? 'Update' : 'Next' }}</v-btn>
         <v-btn color="secondary" @click="emits('closeModal')" class="px-6 py-2">close</v-btn>
       </v-card-actions>
     </v-card>
@@ -60,10 +61,14 @@ function updateSetting() {
 <style scoped>
 /* Custom styles */
 .v-card-title {
-  border-bottom: 1px solid #e0e0e0;
+  border-block-end: 1px solid #e0e0e0;
 }
 
 .v-dialog {
   border-radius: 12px;
+}
+
+.post-setting-dialog .v-card-text {
+  padding-block-end: 10px !important;
 }
 </style>

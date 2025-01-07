@@ -1,5 +1,6 @@
 <script setup>
-import userImg from "@images/avatars/avatar-1.png";
+import { avatarText } from '@/@core/utils/formatters';
+
 const props = defineProps({
   comments: {
     type: Array,
@@ -13,8 +14,8 @@ function like(commentId){
   emit('like',commentId);
 }
 
-function reply(commentId){
-  emit('reply',commentId);
+function reply(comment){
+  emit('reply',comment);
 }
 
 // Toggle the visibility of replies for each comment
@@ -32,7 +33,8 @@ const toggleReplies = (commentId) => {
           <!-- Parent Comment -->
           <v-card-title>
             <v-avatar size="40" class="mr-3">
-              <v-img :src="userImg"></v-img>
+              <v-img v-if="comment.user.profile_image" :src="comment.user.profile_image"></v-img>
+              <span v-else>{{ avatarText(comment.user.full_name) }}</span>
             </v-avatar>
             <div class="d-flex flex-column">
               <span class="font-weight-bold">{{ comment.user.full_name }}</span>
@@ -51,7 +53,7 @@ const toggleReplies = (commentId) => {
               </v-btn>
             </div> |
             <div>
-              <v-btn text @click="reply(comment.id)">
+              <v-btn text @click="reply(comment)">
                 Reply {{ comment.children.length > 0 ? comment.children.length : '' }}
               </v-btn>
             </div>
@@ -69,7 +71,7 @@ const toggleReplies = (commentId) => {
 
 <style scoped lang="scss">
 .comment-list {
-  max-block-size: calc(100vh - 200px);
+  max-block-size: calc(100vh - 50px);
   overflow-y: auto;
   scrollbar-width: 0; // For Firefox
 
@@ -101,7 +103,6 @@ const toggleReplies = (commentId) => {
 
     .v-card {
       padding: 0;
-      background-color: #f9f9f9;
       margin-block-end: 0;
     }
 
@@ -124,7 +125,6 @@ const toggleReplies = (commentId) => {
 
 .v-card {
   padding: 1rem;
-  background-color: #f9f9f9;
   margin-block-end: 1rem;
 
   .v-card-title {
@@ -140,19 +140,16 @@ const toggleReplies = (commentId) => {
       flex-direction: column;
 
       span.font-weight-bold {
-        color: #333;
         font-size: 1rem;
       }
 
       span.text-caption {
-        color: #666;
         font-size: 0.875rem;
       }
     }
   }
 
   .v-card-subtitle {
-    color: #555;
     font-size: 0.95rem;
     margin-block-start: 0.5rem;
 

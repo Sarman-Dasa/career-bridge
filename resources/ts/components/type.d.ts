@@ -19,4 +19,10 @@ export type Post = {
   commentCount:number
   attachments: Attachment[];
   hasLike:boolean
+  hasCommentAllowed:boolean
+};
+
+export type PostSetting = {
+  whoCanSeePost: 'P' | 'C';
+  commentControl: 'A' | 'C' | 'N';
 };

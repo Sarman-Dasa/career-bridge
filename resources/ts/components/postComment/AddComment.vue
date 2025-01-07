@@ -34,7 +34,7 @@ const submitComment = async () => {
 <template>
   <v-container>
     <v-row>
-      <v-col cols="12">
+      <v-col cols="12" class="mx-auto">
         <v-card class="pa-4">
           <v-textarea
             v-model="comment"
@@ -63,6 +63,6 @@ const submitComment = async () => {
 
 
 
-<style scoped>
-/* Optional: Customize button or text area if needed */
+<style scoped lang="scss">
+@import "../../../styles/styles"
 </style>

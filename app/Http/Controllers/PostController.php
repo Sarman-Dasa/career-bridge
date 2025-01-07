@@ -40,7 +40,7 @@ class PostController extends Controller
                             });
                     });
             })
-            ->with(['attachments']); // Eager load related models
+            ->with(['attachments', 'user:id,first_name,last_name,profile_image,role']); // Eager load related models
 
         // Apply sorting, filtering, and pagination
         $posts = $this->filterSortPagination($posts);
@@ -74,7 +74,7 @@ class PostController extends Controller
         if ($request->hasFile('files')) {
             foreach ($request->file('files') as $file) {
                 $newAttachment[] = [
-                    'file_path' => $this->uploadFile($file, 'files/post_attachments'),
+                    'file_path' => $this->uploadToFirebase($file, 'post_attachments/' . $post->id),
                     'file_name' => $file->getClientOriginalName(),
                     'file_type' =>  $file->getClientOriginalExtension(),
                 ];
@@ -93,7 +93,7 @@ class PostController extends Controller
         $request->validate([
             'title' => 'sometimes|string|max:255',
             'content' => 'sometimes|string',
-            'status' => 'in:D,P',
+            'status' => 'sometimes|in:D,P',
             'visibility' => 'in:P,C',
             'comment_control' => 'in:A,C,N',
         ]);
@@ -109,7 +109,7 @@ class PostController extends Controller
         $post = Post::findOrFail($id);
 
         foreach ($post->attachments as $attachment) {
-            $this->deleteFile($attachment->file_path);
+            $this->deleteFromFirebase($attachment->file_path);
             $attachment->delete();
         }
 
@@ -124,7 +124,7 @@ class PostController extends Controller
         $post =  Post::findOrFail($id);
 
         return ok(__('strings.post.user_post_list'), [
-            'post' => $post->load('attachments'),
+            'post' => $post->load('attachments', 'user'),
         ]);
     }
 

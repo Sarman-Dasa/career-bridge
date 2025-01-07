@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { PostSetting } from '@/components/type';
-import VueDropzone from "dropzone-vue3";
+import type { Attachment, PostSetting } from '@/components/type';
 import { ref } from "vue";
 
 // Props
@@ -9,33 +8,32 @@ const props = defineProps({
     type: Boolean,
     required: true,
   },
+  post: {
+    type: Object,
+    required: true,
+  },
 });
 
-const emit = defineEmits("update:isOpen", "addNewPost");
+const emit = defineEmits<{
+  (e: 'update:isOpen', value: boolean): void;
+  (e: 'updatePost', data: any): void;
+}>();
 
 // State
 const isDialogOpen = ref(props.isOpen);
-const postContent = ref("");
-const title = ref();
-const postAttachment = ref<File[]>([]);
-const dropzoneOptions = {
-  url: `${import.meta.env.VITE_API_URL}/image-upload`,
-  maxFilesize: 10, // Max file size in MB
-  addRemoveLinks: true,
-  uploadMultiple: false,
-  acceptedFiles: ".jpg, .jpeg, .png, .gif", // Accepted file types
-};
+const postContent = ref(props.post.content);
+const title = ref(props.post.title);
 
-const openFilePreview = ref(false)
-const fileInput = ref<InstanceType<typeof VueDropzone> | null>(null);
+
+
+const postAttachment = ref<Attachment[]>(props.post.attachments);
 
 const isOpenPostSettingModal = ref(false)
 const postSetting = ref<PostSetting>({
-  whoCanSeePost: 'P',
-  commentControl: 'A',
+  whoCanSeePost: props.post.visibility,
+  commentControl: props.post.comment_control,
 })
 
-const postStatus = ref(false);
 
 // Methods
 const closeDialog = () => {
@@ -43,10 +41,6 @@ const closeDialog = () => {
   emit("update:isOpen", false);
 };
 
-const onFileAdded = (file: any) => {
-  postAttachment.value.push(file);
-  openFilePreview.value = true
-};
 
 const submitPost = () => {
   if (postContent.value.trim() === "") {
@@ -56,24 +50,13 @@ const submitPost = () => {
   const postData = {
     content: postContent.value,
     title: title.value,
-    attachment: postAttachment.value,
     visibility: postSetting.value.whoCanSeePost,
     comment_control: postSetting.value.commentControl,
-    status:postStatus.value ? 'D' : 'P' //P = Public, D = Save as Draff
   };
 
-  emit('addNewPost', postData);
+  emit('updatePost', postData);
   closeDialog();
 };
-
-function addAttachment() {
-  openFilePreview.value = false
-}
-
-function closeFilePreviewModal() {
-  postAttachment.value = []
-  openFilePreview.value = false
-}
 
 function setPostSetting(data: PostSetting) {
   postSetting.value = data
@@ -93,31 +76,23 @@ watch(
     <DialogCloseBtn @click="closeDialog" />
     <v-card>
       <v-card-title class="d-flex justify-space-between">
-        <span class="headline">Create a Post</span>
+        <span class="headline">Update a Post</span>
         <VIcon icon="mdi-cog-outline" size="18" class="mr-3 mt-1" @click="isOpenPostSettingModal = true"></VIcon>
       </v-card-title>
-
-      <v-card-subtitle class="grey--text text--darken-1">
-        Share your thoughts with your network
-      </v-card-subtitle>
 
       <v-card-text>
         <v-text-field v-model="title" label="title" outlined> </v-text-field>
         <!-- Post Content Input -->
         <v-textarea v-model="postContent" label="What's on your mind?" outlined rows="4" class="mt-4"></v-textarea>
 
-        <!-- File Attachment Section -->
-        <VueDropzone id="dropzone" ref="fileInput" :options="dropzoneOptions" @vdropzone-success="onFileAdded"
-          class="d-none" />
         <!-- Edit Icon Overlay -->
         <div class="edit-icon mt-4 d-flex justify-space-between">
-          <VIcon icon="mdi-image-add-outline" @click="fileInput.$el.click()"></VIcon>
           <!-- Small card for preview image show -->
-          <v-row class="flex-wrap justify-end" dense @click="openFilePreview = true">
+          <v-row class="flex-wrap justify-end" dense>
             <!-- Display up to 3 images -->
             <v-col v-for="(file, index) in postAttachment.slice(0, 3)" :key="index" cols="auto"
               class="d-flex justify-center align-center" style="padding: 0; margin-left: -10px;">
-              <v-img :src="file.dataURL" alt="Image preview" class="small-image-preview" contain />
+              <v-img :src="file.file_path" alt="Image preview" class="small-image-preview" contain />
             </v-col>
 
             <!-- Show count of additional images -->
@@ -128,27 +103,17 @@ watch(
         </div>
       </v-card-text>
       <v-card-actions>
-        <v-checkbox v-model="postStatus" label="Save this post as a draft?" />
-        
         <v-spacer></v-spacer>
         <v-btn text @click="closeDialog">Cancel</v-btn>
         <v-btn color="primary" @click="submitPost">Post</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
-
-  <FilePreview v-if="openFilePreview" :show-modal="openFilePreview" :files="postAttachment"
-    @close-modal="closeFilePreviewModal" @addMoreImage="fileInput.$el.click()" @send="addAttachment" />
-
   <PostSetting :show-modal="isOpenPostSettingModal" :post-setting="postSetting"
     @close-modal="isOpenPostSettingModal = false" @update-setting="setPostSetting" />
 </template>
 
 <style scoped lang="scss">
-.vue-dropzone:hover {
-  background: transparent;
-}
-
 .small-image-preview {
   /* Rotate the images slightly */
   overflow: hidden;

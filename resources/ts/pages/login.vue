@@ -20,7 +20,7 @@ const authThemeMask = useGenerateImageVariant(authV2MaskLight, authV2MaskDark)
 const isPasswordVisible = ref(false)
 
 const refVForm = ref<VForm>()
-const email = ref('sarman@gmail.com')
+const email = ref('dasa007@gmail.com')
 const password = ref('admin@123')
 const rememberMe = ref(false)
 const route = useRoute()

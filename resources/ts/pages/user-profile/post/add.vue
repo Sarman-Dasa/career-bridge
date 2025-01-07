@@ -28,7 +28,7 @@ async function addNewPost(data) {
 
   const response = await postRequest('/post/create', formData, false,{
     headers: {
-    "Content-Type": "multipart/form-data",
+    "Content-Type": 'multipart/form-data',
   },
   });
 
@@ -40,14 +40,12 @@ async function addNewPost(data) {
 </script>
 
 <template>
-  <v-container>
     <!-- Button to open the post dialog -->
     <v-btn color="primary" @click="openPostDialog">Create Post</v-btn>
 
     <!-- Add Post Dialog -->
     <AddPostDialog v-if="isDialogOpen" :isOpen="isDialogOpen" @update:is-open="isDialogOpen = $event"
       @add-new-post="addNewPost" />
-  </v-container>
 </template>
 
 

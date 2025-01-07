@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\ConnectionsController;
+use App\Http\Controllers\MessagesController;
 use App\Http\Controllers\PostCommentController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\UserController;
@@ -41,6 +42,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/', 'list');
         Route::post('update-profile', 'update');
         Route::post('post-list', 'userPostList');
+        Route::post('chat-user-list', 'chatUserList');
     });
 
     Route::controller(ConnectionsController::class)->prefix('connection')->group(function () {
@@ -68,5 +70,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('update/{id}', 'update');
         Route::delete('delete/{id}', 'delete');
         Route::post('like-dislike/{id}', 'likeDislike');
+    });
+
+    Route::controller(MessagesController::class)->prefix('message')->group(function () {
+        Route::post('receive', 'receiveMessages');
+        Route::post('send', 'sendMessage');
+        Route::put('update/{id}', 'update');
+        Route::delete('delete/{id}', 'delete');
     });
 });

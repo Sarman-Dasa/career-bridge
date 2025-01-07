@@ -55,13 +55,13 @@ const fileAdded = (addedFile: any) => {
 const emit = defineEmits<Emit>();
 
 const userData = ref<UserData>(structuredClone(toRaw(props.userData)));
-const imageUrl = getProfileImageUrl(userData.value.profile_image);
+const imageUrl = userData.value.profile_image;
 const imagePreview = ref<string | null>(imageUrl || null);
 const selectedFile = ref();
 
 watch(props, () => {
   userData.value = structuredClone(toRaw(props.userData));
-  imagePreview.value = getProfileImageUrl(userData.value.profile_image) || null;
+  imagePreview.value = userData.value.profile_image || null;
 });
 
 function getProfileImageUrl(imagePath: string) {
@@ -76,7 +76,8 @@ const onImageSelect = (file: Event) => {
   selectedFile.value = file;
 }
 
-const onFormSubmit = () => {
+const onFormSubmit = (e: Event) => {
+  e.preventDefault();
   emit("update:isDialogVisible", false);
   userData.value.profile_image = selectedFile.value || null;
   emit("submit", userData.value);

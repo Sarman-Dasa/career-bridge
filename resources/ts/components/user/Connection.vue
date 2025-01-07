@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import userImg from "@images/avatars/avatar-1.png";
+import { avatarText } from "@/@core/utils/formatters";
 import { computed } from "vue";
 
 const props = defineProps({
@@ -27,7 +27,7 @@ const menuList = ref([
 ]);
 
 // Computed values for frequently used data
-const profileImage = computed(() => props.connectionsData.profile_image || userImg);
+const profileImage = computed(() => props.connectionsData.profile_image);
 const connectionStatus = computed(() => props.connectionsData.pivot?.status);
 const isConnected = computed(() => connectionStatus.value === "A");
 const connectionCount = computed(() => props.isSuggestConnectionData
@@ -61,7 +61,9 @@ const withdrawRequest = (id: string) => {
 
     <VCardItem class="flex-grow">
       <VCardTitle class="d-flex flex-column align-center justify-center">
-        <VAvatar size="100" :image="profileImage" />
+        <VAvatar size="100" :image="profileImage" :variant="!profileImage ? 'tonal' : 'elevated'">
+          <span v-if="!profileImage">{{ avatarText(props.connectionsData.full_name) }}</span>
+        </VAvatar>
 
         <p class="mt-4 mb-0">{{ props.connectionsData.full_name }}</p>
         <span class="text-body-1">{{ props.connectionsData.designation }}</span>

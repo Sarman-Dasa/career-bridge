@@ -1,12 +1,21 @@
 <script lang="ts" setup>
+import { avatarText } from "@/@core/utils/formatters";
 import coverImg from "@images/user-profile-header-bg.png";
 import { useUserStore } from './useUserStore';
 
 const userStore = useUserStore();
 
-const profileHeaderData = ref()
+const profileHeaderData = computed(() => {
+  return userStore.user
+})
 
-profileHeaderData.value = userStore.user;
+// watch(user, (newVal) => {
+//   console.log(newVal);
+//   profileHeaderData.value = newVal;
+// }, {
+//   immediate: true,
+//   deep: true
+// })
 
 function getProfileImageUrl(imagePath:string) {
     if (!imagePath) return null;
@@ -29,11 +38,14 @@ function getProfileImageUrl(imagePath:string) {
     <VCardText class="d-flex align-bottom flex-sm-row flex-column justify-center gap-x-5">
       <div class="d-flex h-0">
         <VAvatar
+          v-if="profileHeaderData?.profile_image"
           rounded
           size="120"
-          :image="getProfileImageUrl(profileHeaderData?.profile_image)"
+          :image="profileHeaderData?.profile_image"
           class="user-profile-avatar mx-auto"
+          :variant="!profileHeaderData?.profile_image ? 'tonal' : 'elevated'"
         />
+        <span v-else>{{ avatarText(profileHeaderData?.full_name) }}</span>
       </div>
 
       <div class="user-profile-info w-100 mt-16 pt-6 pt-sm-0 mt-sm-0">

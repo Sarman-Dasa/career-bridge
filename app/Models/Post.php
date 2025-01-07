@@ -24,7 +24,7 @@ class Post extends BaseModel
         'comment_control'
     ];
 
-    protected $appends = ['likeCount', 'commentCount', 'hasLike'];
+    protected $appends = ['likeCount', 'commentCount', 'hasLike', 'hasCommentAllowed'];
 
 
     public function attachments()
@@ -63,5 +63,37 @@ class Post extends BaseModel
     {
         $userId = Auth::id();
         return $this->likes()->where('user_id', $userId)->exists();
+    }
+
+    public function getHasCommentAllowedAttribute()
+    {
+        // If public visibility, allow comments
+        if ($this->comment_control == 'A') {
+            return true;
+        }
+
+        if ($this->user_id == Auth::id()) {
+            return true;
+        }
+        // If connected visibility, check connections
+        if ($this->comment_control == 'C') {
+            $user = Auth::user(); // Get the logged-in user
+
+            // Check if the logged-in user is connected to the owner of this entity
+            $isConnected = $this->user->connections()
+                ->where('connection_id', $user->id)
+                ->where('status', 'A') // Connection is approved
+                ->exists();
+
+            // Check if the logged-in user has received a connection request from the owner
+            $hasReceivedRequest = $this->user->connectionRequestsReceived()
+                ->where('user_id', $user->id)
+                ->where('status', 'A') // Connection is approved
+                ->exists();
+
+            return $isConnected || $hasReceivedRequest;
+        }
+
+        return false; // Comments not allowed by default
     }
 }

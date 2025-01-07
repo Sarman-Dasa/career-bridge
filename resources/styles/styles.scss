@@ -3,7 +3,7 @@
   padding: 10px;
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 10%);
-  max-inline-size: 500px;
+  max-inline-size: 600px;
 }
 
 .text-truncate {
@@ -14,6 +14,13 @@
 
 .post-carousel {
   block-size: 150px;
+
+  .v-btn {
+    padding: 0 !important;
+    border-radius: 50% !important;
+    background-color: transparent !important;
+    color: #fff !important;
+  }
 }
 
 .like-comment-count-list {

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->char('post_id');
             $table->string('file_name');
-            $table->string('file_path');
+            $table->text('file_path');
             $table->string('file_type')->nullable();
             $table->timestamps();
 

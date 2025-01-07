@@ -66,5 +66,12 @@ return [
         "list" => "User list.",
         "update_profile" => "Profile update successfully.",
         "delete_account" => "Account delete successfully."
+    ],
+
+    "message" => [
+        "sent" => "Message sent successfully.",
+        "list" => "Message list.",
+        "update" => "Message updated successfully.",
+        "delete" => "Message deleted successfully."
     ]
 ];

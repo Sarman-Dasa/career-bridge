@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { avatarText } from '@/@core/utils/formatters';
 import { useUserStore } from '@/pages/user-profile/useUserStore';
-import avatar1 from '@images/avatars/avatar-1.png';
 
 const userStore = useUserStore();
 </script>
@@ -19,7 +19,8 @@ const userStore = useUserStore();
       color="primary"
       variant="tonal"
     >
-      <VImg :src="avatar1" />
+      <VImg v-if="userStore.user?.profile_image" :src="userStore.user?.profile_image" />
+      <span v-else>{{ avatarText(userStore.user?.full_name) }}</span>
 
       <!-- SECTION Menu -->
       <VMenu
@@ -44,7 +45,8 @@ const userStore = useUserStore();
                     color="primary"
                     variant="tonal"
                   >
-                    <VImg :src="avatar1" />
+                    <VImg v-if="userStore.user?.profile_image" :src="userStore.user?.profile_image" />
+                    <span v-else>{{ avatarText(userStore.user?.full_name) }}</span>
                   </VAvatar>
                 </VBadge>
               </VListItemAction>

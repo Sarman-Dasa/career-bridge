@@ -135,4 +135,49 @@ class User extends Authenticatable
         // Combine both counts
         return $sentCount + $receivedCount;
     }
+
+    // public function getProfileImageAttribute($value)
+    // {
+    //     $baseUrl = env('APP_URL') . '/storage/';
+    //     return $value ? $baseUrl . $value : null; // Handle cases where profile_image is null
+    // }
+
+    public function messages()
+    {
+        return $this->hasMany(Message::class, 'sender_id');
+    }
+
+    public function lastMessageWith($userId)
+    {
+        $message = Message::where(function ($query) use ($userId) {
+                $query->where(function ($q) use ($userId) {
+                    $q->where('sender_id', $this->id)
+                      ->where('receiver_id', $userId);
+                })->orWhere(function ($q) use ($userId) {
+                    $q->where('sender_id', $userId)
+                      ->where('receiver_id', $this->id);
+                });
+            })
+            ->with('attachments')
+            ->latest()
+            ->first();
+
+        return $message;
+    }
+
+    // public function withLastMessage()
+    // {
+    //     return $this->hasOne(Message::class, 'sender_id')
+    //         ->orderBy('created_at', 'desc');
+    // }
+
+    // public function withLastMessage()
+    // {
+    //     return $this->hasOne(Message::class, 'sender_id')
+    //         ->where(function ($query) {
+    //             $query->where('sender_id', $this->id)
+    //                 ->orWhere('receiver_id', $this->id);
+    //         })
+    //         ->orderBy('created_at', 'desc');
+    // }
 }

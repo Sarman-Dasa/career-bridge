@@ -2,6 +2,7 @@
 import type { ProfileTab } from '@/@fake-db/types';
 import UserInfoEditDialog from '@/components/dialogs/UserInfoEditDialog.vue';
 import { postRequest } from '@/services/apiService';
+import { useUserStore } from '../useUserStore';
 
 
 interface Props {
@@ -10,6 +11,11 @@ interface Props {
 const props = defineProps<Props>()
 
 const isUserInfoEditDialogVisible = ref(false)
+const userStore = useUserStore();
+
+const user = computed(() => {
+  return userStore.user
+})
 
 async function updateProfile(event: any) {
 
@@ -28,17 +34,22 @@ async function updateProfile(event: any) {
     formData.append('profile_image', profile_image);
   }
 
-  const response = await postRequest('/user/update-profile', formData, false,{
-    headers: {
-    "Content-Type": null,
-  },
-  });
 
+  // const response = await PostApi('/user/update-profile', formData, true);
+  const response = await postRequest('/user/update-profile', formData, true,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  );
   if (response && response.status == 200) {
     let user = response.data.user;
     localStorage.setItem('userData', JSON.stringify(user))
+    userStore.setUser(user)
   }
 }
+
 </script>
 
 <template>
@@ -61,7 +72,7 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">Full Name:</span>
-            <span>{{ props.data.full_name }}</span>
+            <span>{{ user.full_name }}</span>
           </VListItemTitle>
         </VListItem>
         <VListItem>
@@ -70,7 +81,7 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">Role:</span>
-            <span>{{ props.data.role_name }}</span>
+            <span>{{ user.role_name }}</span>
           </VListItemTitle>
         </VListItem>
         <VListItem>
@@ -79,7 +90,7 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">Username:</span>
-            <span>{{ props.data.username }}</span>
+            <span>{{ user.username }}</span>
           </VListItemTitle>
         </VListItem>
       </VList>
@@ -93,7 +104,7 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">Email:</span>
-            <span>{{ props.data.email }}</span>
+            <span>{{ user.email }}</span>
           </VListItemTitle>
         </VListItem>
         <VListItem>
@@ -102,7 +113,7 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">Mobile:</span>
-            <span>{{ props.data.mobile }}</span>
+            <span>{{ user.mobile }}</span>
           </VListItemTitle>
         </VListItem>
         <VListItem>
@@ -111,7 +122,7 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">City:</span>
-            <span>{{ props.data.city }}</span>
+            <span>{{ user.city }}</span>
           </VListItemTitle>
         </VListItem>
       </VList>
@@ -127,7 +138,7 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">Account Status:</span>
-            <span>{{ props.data.is_active ? "Active" : 'Deactivate' }}</span>
+            <span>{{ user.is_active ? "Active" : 'Deactivate' }}</span>
           </VListItemTitle>
         </VListItem>
         <VListItem>
@@ -136,7 +147,7 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">Join At:</span>
-            <span>{{ $formatDate(props.data.created_at) }}</span>
+            <span>{{ $formatDate(user.created_at) }}</span>
           </VListItemTitle>
         </VListItem>
         <VListItem>
@@ -145,14 +156,14 @@ async function updateProfile(event: any) {
           </template>
           <VListItemTitle>
             <span class="font-weight-medium me-1">Connections:</span>
-            <span>{{ props.data.connection_count ?? 0 }}</span>
+            <span>{{ user.connection_count ?? 0 }}</span>
           </VListItemTitle>
         </VListItem>
       </VList>
     </VCardText>
   </VCard>
 
-  <UserInfoEditDialog v-model:isDialogVisible="isUserInfoEditDialogVisible" :user-data="props.data"
+  <UserInfoEditDialog v-model:isDialogVisible="isUserInfoEditDialogVisible" :user-data="user"
     @submit="updateProfile" />
 </template>
 

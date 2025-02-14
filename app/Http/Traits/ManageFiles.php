@@ -105,4 +105,18 @@ trait ManageFiles
 
         return $filePath;
     }
+
+    function getBase64Image(string $filePath): ?string
+    {
+        $path = public_path($filePath);
+
+        if (!file_exists($path)) {
+            return null; // Return null if file doesn't exist
+        }
+
+        $fileType = mime_content_type($filePath); // Get file MIME type
+        $fileData = base64_encode(file_get_contents($path)); // Convert to base64
+
+        return "data:$fileType;base64,$fileData";
+    }
 }

@@ -4,10 +4,15 @@ import { defineEmits, defineProps } from 'vue';
 interface Props {
   menuList?: Array<{ title: string; value: string; icon: string }>;
   itemProps?: boolean;
+  icon?: string;
+  size?: number;
 }
 
 // Define props
-const props = defineProps<Props>();
+const props = withDefaults( defineProps<Props>(), {
+  icon: 'tabler-dots-vertical',
+  size: 24
+});
 
 // Define emits
 const emit = defineEmits(['item-click']);
@@ -21,7 +26,7 @@ function handleClick(item: { title: string; value: string }) {
 <template>
   <div class="more_btn">
     <IconBtn density="compact" color="disabled">
-    <VIcon icon="tabler-dots-vertical" />
+    <VIcon :icon="props.icon" :size="props.size" />
 
     <VMenu v-if="props.menuList" activator="parent">
       <VList>

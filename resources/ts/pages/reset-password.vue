@@ -130,7 +130,6 @@ const isConfirmPasswordVisible = ref(false);
 </style>
 
 <route lang="yaml">
-<route lang="yaml">
 meta:
   layout: blank
   action: read

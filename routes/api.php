@@ -77,5 +77,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('send', 'sendMessage');
         Route::put('update/{id}', 'update');
         Route::delete('delete/{id}', 'delete');
+        Route::post('mark-delivered', 'markAsDelivered');
+        Route::post('mark-seen', 'markAsSeen');
+        Route::post('mark-all-delivered', 'markAllAsDelivered');
+        Route::delete('delete-attachment/{messageId}/{attachmentId}', 'deleteMessageAttachment');
+        Route::get('send-html-email', 'sendFile');
     });
 });

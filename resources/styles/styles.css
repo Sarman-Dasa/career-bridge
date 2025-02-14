@@ -1,12 +1,13 @@
-
 .v-img__img--contain {
-  object-fit: fill;
+  -o-object-fit: fill;
+     object-fit: fill;
 }
+
 .post-card {
   overflow: hidden;
   padding: 10px;
   border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 10%);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   max-inline-size: 600px;
 }
 
@@ -18,13 +19,12 @@
 
 .post-carousel {
   block-size: 150px;
-
-  .v-btn {
-    padding: 0 !important;
-    border-radius: 50% !important;
-    background-color: transparent !important;
-    color: #fff !important;
-  }
+}
+.post-carousel .v-btn {
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background-color: transparent !important;
+  color: #fff !important;
 }
 
 .like-comment-count-list {
@@ -54,20 +54,16 @@
   margin-block-start: 4px;
 }
 
-.more_btn {
-  .v-list-item {
-    padding-block: 8px;
-    padding-inline: 16px;
-  }
-
-  .v-list-item-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-inline-size: 24px; /* Ensures icon area is consistent */
-  }
-
-  .v-list-item-title {
-    flex: 1; /* Ensures text takes remaining space */
-  }
+.more_btn .v-list-item {
+  padding-block: 8px;
+  padding-inline: 16px;
 }
+.more_btn .v-list-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 24px; /* Ensures icon area is consistent */
+}
+.more_btn .v-list-item-title {
+  flex: 1; /* Ensures text takes remaining space */
+}/*# sourceMappingURL=styles.css.map */

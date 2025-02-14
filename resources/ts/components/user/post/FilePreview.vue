@@ -19,6 +19,11 @@ const props = defineProps<{
     default: '',
     required: false,
   },
+  loading: {
+    type: Boolean,
+    default: false,
+    required: false,
+  },
 }>();
 
 const emits = defineEmits<{
@@ -82,7 +87,7 @@ watch(newMessage, (value) => {
       <v-card-actions class="flex justify-between">
         <v-btn color="secondary" @click="closeModal" class="px-6 py-2">Cancel</v-btn>
         <v-btn color="primary" @click="emits('addMoreImage')" class="px-6 py-2">Add new File</v-btn>
-        <v-btn color="success" @click="emits('send')" class="px-6 py-2">Next</v-btn>
+        <v-btn color="success" :disabled="loading" @click="emits('send')" class="px-6 py-2">Next</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

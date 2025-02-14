@@ -1,65 +1,136 @@
-Chat message
 <script lang="ts" setup>
 import { avatarText } from '@/@core/utils/formatters';
-import type { Message } from '@/@types';
+import MessageList from '@/components/chat/MessageList.vue';
+import UserListItem from '@/components/chat/UserList.vue';
 import FilePreview from '@/components/user/post/FilePreview.vue';
-import { postRequest } from '@/services/apiService';
+import echo from '@/plugins/echo';
+import { deleteRequest, postRequest, putRequest } from '@/services/apiService';
+import type { Message, User } from '@/types';
 import VueDropzone from "dropzone-vue3";
-import { onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { useUserStore } from '../user-profile/useUserStore';
+// import InfiniteLoading from 'vue-infinite-loading';
+
 const props = defineProps<{
   user: User;
 }>();
 
-const messages = ref<Message[]>([])
+const userStore = useUserStore();
+
+const loggedInUser = computed(() => userStore.user);
+let target = ref(".message-list");
+const resetData = ref(false)
+const distance = ref(5)
+
+const messages = ref<Record<string, Message[]>>({});
 const newMessage = ref('')
 const attachments = ref<File[]>([])
 const loading = ref(false)
-const audioRecording = ref(false)
-const users = ref<User[]>([])
 const selectedUser = ref<User | null>(null)
 const showFilePreview = ref(false)
+const isTyping = ref(false)
+const typingTimeout = ref<NodeJS.Timeout>()
+const chatUsers = ref<User[]>([])
+const contactUsers = ref<User[]>([])
+const chatUsersCount = ref(0)
+const contactUsersCount = ref(0)
+const isSendingMessageLoading = ref(false)
+const page = ref(1)
+const perPage = ref(50)
+const isLoadingMore = ref(false)
+const totalPages = ref(0)
+const childRef = ref(null);
+const isMobile = ref(false); // Detect mobile view
+const isChatOpen = ref(false); // Toggle between user list and chat
+
 const dropzoneOptions = {
   url: `${import.meta.env.VITE_API_URL}/image-upload`,
-  maxFilesize: 10, // Max file size in MB
+  maxFilesize: 10,
   addRemoveLinks: true,
   uploadMultiple: false,
   maxFiles: 10,
-  acceptedFiles: ".jpg, .jpeg, .png, .gif", // Accepted file types
+  acceptedFiles: ".jpg, .jpeg, .png, .gif",
 };
 
 const fileInput = ref<InstanceType<typeof VueDropzone> | null>(null);
 const isRecording = ref(false)
 
+const items = ref([
+  { title: 'Edit Message', value: 'edit', icon: 'mdi-pencil' },
+  { title: 'Delete Message', value: 'delete', icon: 'mdi-delete' },
+])
+
+const editMessageId = ref<string | null>(null)
+
 const fetchUsers = async () => {
   try {
     const response = await postRequest('/user/chat-user-list', {}, false)
-    users.value = response.data.users
-    console.log(users.value)
+    chatUsers.value = response.data.chat_users
+    contactUsers.value = response.data.contact_users
+    chatUsersCount.value = response.data.chat_users_count
+    contactUsersCount.value = response.data.contact_users_count
   } catch (error) {
     console.error(error)
   }
 }
 
-const fetchMessages = async (userId: string) => {
-  loading.value = true
+const loadMoreMessages = async ($state: any) => {
+
   try {
+    isLoadingMore.value = true;
     const response = await postRequest('/message/receive', {
-      user_id: userId
-    }, false)
-    messages.value = response.data.messages
+      user_id: selectedUser.value?.id,
+      per_page: perPage.value,
+      page: page.value
+    }, false);
+
+    const newMessages = response.data.messages;
+    totalPages.value = response.data.total_pages
+    
+    if (Object.keys(newMessages).length) {
+         // Ensure reactivity is preserved
+         messages.value = {
+        ...newMessages, // Add new messages
+        ...messages.value // Keep old messages
+      };
+
+      // messages.value.unshift(...newMessages); // Push messages with key-value p
+      if (page.value < totalPages.value) {
+        page.value++;
+        $state?.loaded();
+      }
+      else {
+        $state?.complete();
+      }
+        // Mark messages as seen if they're unseen and not from logged-in user
+        const unseenMessages = Object.values(newMessages)
+        .flat()
+        .filter((m: Message) => !m.is_seen && m.sender_id !== loggedInUser.value?.id)
+        .map((m: Message) => m.id);
+
+      if (unseenMessages.length) {
+        markAsSeen(unseenMessages);
+      }
+    } else {
+      $state?.complete();
+    }
+
   } catch (error) {
-    console.error(error)
+    console.error(error);
+    $state?.error();
+  } finally {
+    isLoadingMore.value = false;
   }
-  loading.value = false
-}
+};
 
 const sendMessage = async (audioBlob?: Blob) => {
+  isSendingMessageLoading.value = true
   if (!newMessage.value && attachments.value.length === 0 && !audioBlob || !selectedUser.value) return
 
   const formData = new FormData()
   formData.append('user_id', selectedUser.value.id)
   formData.append('message', newMessage.value)
-  if (audioBlob && audioBlob.type === 'audio/wav') {
+  if (audioBlob && audioBlob.type === 'audio/mp3') {
     formData.append('audio', audioBlob, 'recording.wav')
   }
   attachments.value.forEach(file => {
@@ -72,19 +143,150 @@ const sendMessage = async (audioBlob?: Blob) => {
         'Content-Type': 'multipart/form-data'
       }
     })
-    messages.value.push(response.data.message)
+    const message = response.data.message
+    
+    // Get today's date as key
+    const today = new Date().toLocaleDateString('en-GB', { 
+      day: 'numeric',
+      month: 'short', 
+      year: 'numeric'
+    }).replace(',', ''); // Remove the comma if needed
+
+    // Initialize today's array if it doesn't exist
+    if (!messages.value[today]) {
+      messages.value[today] = [];
+    }
+
+    // Add new message to today's group
+    messages.value[today].push(message);
+
     newMessage.value = ''
     attachments.value = []
     showFilePreview.value = false
+
+    // Update last message for selected user
+    if (selectedUser.value) {
+      selectedUser.value.with_last_message = {
+        message: message.message,
+        created_at: message.created_at,
+        attachments: message.attachments
+      };
+    }
+
+    childRef?.value?.showNewMessage(); // Call the child function to show lates message 
+    isSendingMessageLoading.value = false
   } catch (error) {
     console.error(error)
   }
 }
 
+// Update message
+const updateMessage = async () => {
+  try {
+    const response = await putRequest(`/message/update/${editMessageId.value}`, {
+      message: newMessage.value
+    });
+    
+    // Find the message group that contains the message
+    const dateKey = Object.keys(messages.value).find(date =>
+      messages.value[date].some((m: Message) => m.id === editMessageId.value)
+    );
+
+    if (dateKey) {
+      const index = messages.value[dateKey].findIndex((m: Message) => m.id === editMessageId.value);
+      if (index !== -1) {
+        messages.value[dateKey][index] = response.data.data.message;
+      }
+    }
+    editMessageId.value = null;
+    newMessage.value = '';
+  } catch (error) {
+    console.error('Error updating message:', error);
+  }
+};
+
+// Delete message
+const deleteMessage = async (messageId: string) => {
+  try {
+    await deleteRequest(`/message/delete/${messageId}`);
+    
+    const dateKey = Object.keys(messages.value).find(date =>
+      messages.value[date].some((m: Message) => m.id === messageId)
+    );
+
+    if(dateKey) {
+      const index = messages.value[dateKey].findIndex((m: Message) => m.id === messageId);
+
+      if (index !== -1) {
+        messages.value[dateKey].splice(index, 1);
+        
+        // Remove date group if empty
+        if (messages.value[dateKey].length === 0) {
+          delete messages.value[dateKey];
+        }
+        
+        // Update last message if needed
+        if (selectedUser.value) {
+          const lastDateKey = Object.keys(messages.value).pop();
+          if (lastDateKey) {
+            const lastMessageGroup = messages.value[lastDateKey];
+            const lastMessage = lastMessageGroup[lastMessageGroup.length - 1];
+            selectedUser.value.with_last_message = {
+              message: lastMessage.message,
+              created_at: lastMessage.created_at,
+              attachments: lastMessage.attachments
+            };
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting message:', error);
+  }
+};
+
+const deleteMessageAttachment = async (messageId: string, attachmentId: string) => {
+  try {
+    let response = await deleteRequest(`/message/delete-attachment/${messageId}/${attachmentId}`);
+    if (response && response.status == 200) {
+      // Find message in the correct date group
+      for (const [date, messageGroup] of Object.entries(messages.value)) {
+        const messageIndex = messageGroup.findIndex(message => message.id === messageId);
+        if (messageIndex !== -1) {
+          if (!response.data.message?.attachments?.length) {
+            // Remove message if no attachments left
+            messages.value[date].splice(messageIndex, 1);
+            // Remove date group if empty
+            if (messages.value[date].length === 0) {
+              delete messages.value[date];
+            }
+          } else {
+            // Update attachments if message still exists
+            messages.value[date][messageIndex].attachments = response.data.message.attachments;
+          }
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting message attachment:', error);
+  }
+};
+
 const selectUser = (user: User) => {
-  selectedUser.value = user
-  fetchMessages(user.id)
+  selectedUser.value = user;
+  page.value = 1;
+  messages.value = {};
+  totalPages.value = 0;
+  resetData.value = !resetData.value;
+  isChatOpen.value = true;
+  // loadMoreMessages();
 }
+
+const closeChat = () => {
+  selectedUser.value = null;
+  isChatOpen.value = false;
+};
 
 const lastMessage = (user: User) => {
   return user.with_last_message?.message || (user.with_last_message?.attachments?.length ? 'Attachment' : 'No messages yet')
@@ -102,160 +304,465 @@ const onFileAdded = (file: any) => {
 
 const onAudioRecordingComplete = (audioBlob: Blob) => {
   if (audioBlob) {
-    console.log(audioBlob)
     sendMessage(audioBlob)
   }
 }
 
-onMounted(() => {
-  fetchUsers()
+const emitTyping = () => {
+  if (selectedUser.value) {
+    echo.private(`chat.${selectedUser.value.id}`).whisper('typing', {
+      user: loggedInUser.value
+    });
+  }
+}
+
+const handleTyping = () => {
+  if (typingTimeout.value) {
+    clearTimeout(typingTimeout.value)
+  }
+
+  emitTyping()
+
+  typingTimeout.value = setTimeout(() => {
+    if (selectedUser.value) {
+      echo.private(`chat.${selectedUser.value.id}`).whisper('stopTyping', {
+        user: loggedInUser.value
+      });
+    }
+  }, 1000)
+}
+
+const updateMessageStatus = (message: Message, status: string) => {
+  echo.private(`chat.${selectedUser.value.id}`).whisper('messageStatus', {
+    message: message,
+    status: status,
+    user_id: loggedInUser.value?.id
+  });
+}
+
+const markAsSeen = async (messageIds: string[]) => {
+  const response = await postRequest('/message/mark-seen', { message_ids: messageIds }, false);
+
+  if (response.status === 200) {
+    messageIds.forEach(messageId => {
+      const dateKey = Object.keys(messages.value).find(date =>
+          messages.value[date].some((m: Message) => m.id === messageId)
+        );
+
+        if(dateKey) {
+            const message = messages.value[dateKey].find((m: Message) => m.id === messageId);
+        if (message) {
+         
+            message.is_seen = true;
+            message.seen_at = new Date().toISOString();
+            selectedUser.value.with_last_message = {
+              unread_messages: 0
+            }
+        }
+      }
+      });
+  } else {
+    console.error('Failed to mark messages as seen');
+  }
+}
+
+const markAsDelivered = async (messageIds: string[]) => {
+  const response = await postRequest('/message/mark-delivered', { message_ids: messageIds }, false);
+  if (response.status === 200) {
+    messageIds.forEach(messageId => {
+      const dateKey = Object.keys(messages.value).find(date =>
+          messages.value[date].some((m: Message) => m.id === messageId)
+        );
+
+        if(dateKey) {
+            const message = messages.value[dateKey].find((m: Message) => m.id === messageId);
+
+        if (message) {
+            message.is_delivered = true;
+            message.delivered_at = new Date().toISOString()
+        }
+      }
+      });
+  }
+}
+
+function handleItemClick(item: { title: string; value: string }, message: Message) {
+  if (item.value === 'edit') {
+    editMessageId.value = message.id
+    newMessage.value = message.message
+    nextTick(() => {
+      const messageInput = document.querySelector('input[type="text"]') as HTMLInputElement
+      messageInput?.focus()
+    })
+  } else if (item.value === 'delete') {
+    deleteMessage(message.id)
+  }
+}
+
+const checkScreenSize = () => {
+  isMobile.value = window.innerWidth <= 992;
+};
+
+watch(() => newMessage.value, (newVal) => {
+  if (newVal) {
+    handleTyping()
+  }
 })
+
+onMounted(async () => {
+  await fetchUsers();
+  checkScreenSize();
+  window.addEventListener("resize", checkScreenSize);
+
+
+  echo.private(`chat.${loggedInUser.value?.id}`)
+    .listen('.MessageEvent', (e: { message: Message; type: string }) => {
+      console.log("type::",e.type);
+      // Only process messages from selected user
+      // If message is from a different user than currently selected
+      if (e.message.sender_id !== selectedUser.value?.id && e.type === 'sent') {
+        // Try to find user in chat users list
+        let user = chatUsers.value.find((u: User) => u.id === e.message.sender_id);
+        if (!user) {
+          // If not found in chat users, look in contact users
+          const contactUser = contactUsers.value.find((u: User) => u.id === e.message.sender_id);
+          if (contactUser) {
+            // Move user from contacts to chat users
+            chatUsers.value.push(contactUser);
+            contactUsers.value = contactUsers.value.filter(u => u.id !== contactUser.id);
+            user = contactUser;
+          }
+        }
+        // Update the last message for this user
+        if (user) {
+          user.with_last_message = {
+            message: e.message.message,
+            created_at: e.message.created_at,
+            attachments: e.message.attachments,
+            unread_messages: (user.with_last_message?.unread_messages || 0) + 1
+          };
+        }
+
+        // Mark message as delivered and exit
+        markAsDelivered([e.message.id]);
+        return;
+      }
+
+      // Handle different message events
+      switch (e.type) {
+        case 'sent':
+          const today = new Date().toLocaleDateString('en-US', { 
+            day: 'numeric',
+            month: 'short', 
+            year: 'numeric'
+          });
+          
+          if (!messages.value[today]) {
+            messages.value[today] = [];
+          }
+          messages.value[today].push(e.message);
+          updateMessageStatus(e.message, 'seen');
+          // Update last message for selected user
+          if (selectedUser.value) {
+            selectedUser.value.with_last_message = {
+              message: e.message.message,
+              created_at: e.message.created_at,
+              attachments: e.message.attachments
+            };
+          }
+          break;
+        case 'updated':
+
+        const dateKey = Object.keys(messages.value).find(date =>
+          messages.value[date].some((m: Message) => m.id === e.message.id)
+        );
+
+        if(dateKey) {
+          // for (const [date, messageGroup] of Object.entries(messages.value)) {
+            const index = messages.value[dateKey].findIndex((m: Message) => m.id === e.message.id);
+            if (index !== -1) {
+              messages.value[dateKey][index] = e.message;
+              // Update last message if needed
+              if (index === messages.value[dateKey].length - 1 && selectedUser.value) {
+                selectedUser.value.with_last_message = {
+                  message: e.message.message,
+                  created_at: e.message.created_at,
+                  attachments: e.message.attachments
+                };
+              }
+            }
+              // break;
+            // }
+          }
+          break;
+
+        case 'deleted':
+          for (const [date, messageGroup] of Object.entries(messages.value)) {
+            const index = messageGroup.findIndex((m: Message) => m.id === e.message.id);
+            if (index !== -1) {
+              messages.value[date].splice(index, 1);
+              if (messages.value[date].length === 0) {
+                delete messages.value[date];
+              }
+              break;
+            }
+          }
+          break;
+      }
+    })
+    // Listen for message status updates (delivered/seen)
+    .listen('.MessageStatusEvent', (e: { messageIds: string[]; status: string; user_id: string }) => {
+      const timestamp = new Date().toISOString();
+      
+      e.messageIds.forEach(messageId => {
+        const dateKey = Object.keys(messages.value).find(date =>
+          messages.value[date].some((m: Message) => m.id === messageId)
+        );
+
+        if(dateKey) {
+        const message = messages.value[dateKey].find((m: Message) => m.id === messageId);
+        if (!message) return;
+
+        if (e.status === 'delivered') {
+          message.is_delivered = true;
+          message.delivered_at = timestamp;
+        } else if (e.status === 'seen') {
+          message.is_seen = true; 
+          message.seen_at = timestamp;
+        }
+      }
+      });
+    })
+    // Listen for typing indicator events
+    .listenForWhisper('typing', (e: { user: User }) => {
+      if (selectedUser.value?.id !== e.user.id) return;
+      
+      isTyping.value = true;
+      if (typingTimeout.value) clearTimeout(typingTimeout.value);
+      
+      // Reset typing indicator after 3 seconds of no typing
+      typingTimeout.value = setTimeout(() => {
+        isTyping.value = false;
+      }, 3000);
+    })
+    // Listen for stop typing events
+    .listenForWhisper('stopTyping', (e: { user: User }) => {
+      if (selectedUser.value?.id === e.user.id) {
+        isTyping.value = false
+      }
+    }).listenForWhisper('messageStatus', (e: { message: Message; status: string; user_id: string }) => {
+      if (selectedUser.value?.id === e.user_id) {
+        const dateKey = Object.keys(messages.value).find(date =>
+          messages.value[date].some((m: Message) => m.id === e.message.id)
+        );
+
+        if(dateKey) {
+            const message = messages.value[dateKey].find((m: Message) => m.id === e.message.id);
+          if (message) {
+            message.is_seen = e.status === 'seen';
+            message.is_delivered = e.status === 'delivered';
+            message.seen_at = e.status === 'seen' ? new Date().toISOString() : undefined;
+            message.delivered_at = e.status === 'delivered' ? new Date().toISOString() : undefined;
+          }
+        }
+      }
+  });
+
+  echo.join('presence.chat')
+    // List all users currently online when joining the channel
+    .here((users: User[]) => {
+      users.forEach((user: User) => {
+        // Mark users as online
+        const chatUser = chatUsers.value.find((u: User) => u.id === user.id);
+        if (chatUser) {
+          chatUser.is_online = true;
+        }
+      });
+    })
+    // Listen for users joining the channel
+    .joining((user: User) => {
+      // Mark user as online
+      const chatUser = chatUsers.value.find((u: User) => u.id === user.id);
+      if (chatUser) {
+        chatUser.is_online = true;
+      }
+    })
+    // Listen for users leaving the channel
+    .leaving((user: User) => {
+      // Mark user as offline
+      const chatUser = chatUsers.value.find((u: User) => u.id === user.id);
+      if (chatUser) {
+        chatUser.is_online = false;
+      }
+  });
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", checkScreenSize);
+});
 </script>
 
 <template>
-  <v-container fluid class="fill-height pa-0">
-    <v-row no-gutters style="height: 100vh;">
+  <v-container class="fill-height pa-0">
+    <v-row no-gutters>
       <!-- Users List -->
-      <v-col cols="3" class="border-r">
-        <v-card flat>
+      <v-col cols="12" md="3" :class="{'user-list':isMobile && isChatOpen}">
+        <v-card>
           <v-card-title class="py-4 px-4">
             <span class="text-h6">Messages</span>
           </v-card-title>
 
-          <v-list class="overflow-y-auto" style="height: calc(100vh - 64px);">
-            <v-list-item v-for="user in users" :key="user.id" :active="selectedUser?.id === user.id"
-              @click="selectUser(user)">
-              <template v-slot:prepend>
-                <v-avatar size="40">
-                  <v-img v-if="user.profile_image" :src="user.profile_image" :alt="user.first_name" />
-                  <span v-else>{{ avatarText(user.full_name) }}</span>
-                </v-avatar>
-              </template>
+          <v-list class="messages-container">
+            <div>
+              <!-- Chat Users Section -->
+              <div class="pa-3">
+                <div class="d-flex justify-space-between align-center mb-2">
+                  <span class="text-h6">Chat Users</span>
+                  <v-chip color="primary" size="small">{{ chatUsersCount }}</v-chip>
+                </div>
+                    <UserListItem
+                      v-for="user in chatUsers"
+                      :key="user.id"
+                      :user="user"
+                      :selectedUser="selectedUser"
+                      :isChatUser="true"
+                      @select-user="selectUser"
+                    />
+                </div>
 
-              <v-list-item-title>{{ user.first_name }} {{ user.last_name }}</v-list-item-title>
-              <v-list-item-subtitle class="text-truncate">
-                {{ lastMessage(user) }}
-              </v-list-item-subtitle>
-            </v-list-item>
+              <!-- Contact Users Section -->
+              <div class="pa-3">
+                <div class="d-flex justify-space-between align-center mb-2">
+                  <span class="text-h6">Contacts</span>
+                  <v-chip color="secondary" size="small">{{ contactUsersCount }}</v-chip>
+                </div>
+                  <UserListItem
+                    v-for="user in contactUsers"
+                    :key="user.id"
+                    :user="user"
+                    :selectedUser="selectedUser"
+                    @select-user="selectUser"
+                  />
+              </div>
+            </div>
           </v-list>
         </v-card>
       </v-col>
 
       <!-- Chat Area -->
-      <v-col cols="9">
-        <v-card flat height="100%">
+      <v-col cols="12" md="9" :class="{'user-list':isMobile && !isChatOpen}">
+        <v-card>
           <template v-if="selectedUser">
             <!-- Chat Header -->
-            <v-card-title class="py-4 px-4 border-b d-flex mb-1">
-              <v-avatar size="40" class="mr-3">
-                <v-img v-if="selectedUser.profile_image" :src="selectedUser.profile_image"
-                  :alt="selectedUser.first_name" />
-                <span v-else>{{ avatarText(selectedUser.full_name) }}</span>
-              </v-avatar>
+            <v-card-title class="py-4 px-4 border-b d-flex justify-space-between mb-1 card-header-tabs">
+         
+             <div class="d-flex align-center">
+                <VBadge
+                  dot
+                  location="bottom right"
+                  offset-x="3"
+                  offset-y="3"
+                  bordered
+                  :color="selectedUser.is_online ? 'success' : 'secondary'">
+                    <v-avatar size="40" class="mr-3">
+                      <v-img v-if="selectedUser.profile_image" :src="selectedUser.profile_image" :alt="selectedUser.first_name" />
+                      <span v-else>{{ avatarText(selectedUser.full_name) }}</span>
+                    </v-avatar>
+                </VBadge>
               <div>
                 <div class="text-h6">{{ selectedUser.first_name }} {{ selectedUser.last_name }}</div>
                 <div class="text-subtitle-2">{{ selectedUser.email }}</div>
               </div>
+             </div>
+
+                 <!-- Back Button for Mobile -->
+            <v-btn class="back-button" icon v-if="isMobile" @click="closeChat">
+              <v-icon>mdi-arrow-left</v-icon>
+            </v-btn>
             </v-card-title>
 
             <!-- Messages Area -->
-            <v-card-text class="overflow-y-auto px-4" style="height: calc(100vh - 180px);">
-              <v-progress-circular v-if="loading" indeterminate />
-
-              <template v-else>
-                <div v-for="message in messages" :key="message.id" class="mb-4">
-                  <div :class="[
-                    'd-flex align-center',
-                    message.sender_id === selectedUser.id ? 'justify-start' : 'justify-end'
-                  ]">
-                    <v-avatar v-if="message.sender_id === selectedUser.id" size="32" class="mr-2">
-                      <v-img v-if="selectedUser.profile_image" :src="selectedUser.profile_image"
-                        :alt="selectedUser.first_name" />
-                      <span v-else>{{ avatarText(selectedUser.full_name) }}</span>
-                    </v-avatar>
-
-                    <div class="d-flex flex-column" :class="[
-                      message.sender_id === selectedUser.id ? 'align-start' : 'align-end'
-                    ]">
-                      <v-card v-if="message.message"
-                        :color="message.sender_id === selectedUser.id ? 'grey-lighten-3' : 'primary'" :class="[
-                          message.sender_id === selectedUser.id ? 'text-body-2' : 'white--text',
-                          'message-card'
-                        ]" class="pa-3 rounded-lg elevation-1 mb-2" flat>
-                        <div class="message-content">
-                          <p class="mb-2 text-body-1">{{ message.message }}</p>
-                          <div class="d-flex align-center text-caption message-meta">
-                            <span class="text-disabled">{{ message.timeAgo }}</span>
-                            <v-icon v-if="message.is_edited" size="12" class="ml-1" color="grey-darken-1">
-                              mdi-pencil
-                            </v-icon>
-                          </div>
-                        </div>
-                      </v-card>
-
-                      <div v-if="message.attachments?.length" class="d-flex flex-wrap gap-2">
-                        <div v-for="attachment in message.attachments" :key="attachment.id" class="attachment-wrapper">
-                          <audio v-if="attachment.is_audio_file" controls :src="attachment.file_path"
-                            class="audio-player rounded-lg elevation-1" />
-                          <v-img v-else :src="attachment.file_path" width="100" height="100" class="rounded-lg" cover />
-                        </div>
-                      </div>
-                    </div>
-
-                    <v-avatar v-if="message.sender_id !== selectedUser.id" size="32" class="ml-2">
-                      <v-img v-if="props.user.profile_image" :src="props.user.profile_image" />
-                      <span v-else>{{ avatarText(props.user.full_name) }}</span>
-                    </v-avatar>
-                  </div>
-                </div>
-              </template>
-            </v-card-text>
+            <MessageList
+              ref="childRef"
+              :messages="messages"
+              :selectedUser="selectedUser"
+              :loggedInUser="loggedInUser"
+              :loading="loading"
+              :isLoadingMore="isLoadingMore"
+              :target="target"
+              :distance="distance"
+              :identifier="resetData"
+              @infinite="loadMoreMessages"
+              @deleteAttachment="deleteMessageAttachment"
+              @itemClick="handleItemClick"
+            />
 
             <!-- Message Input -->
             <v-card-actions class="pa-4 border-t">
-              <v-form @submit.prevent="sendMessage" class="w-100" v-show="!isRecording">
+              <v-form @submit.prevent="editMessageId ? updateMessage() : sendMessage()" class="w-100" v-show="!isRecording">
                 <v-row align="center" no-gutters>
                   <v-col cols="auto">
-                    <VueDropzone id="dropzone" ref="fileInput" :options="dropzoneOptions" @vdropzone-success="onFileAdded"
-                    class="d-none" />
+                    <VueDropzone id="dropzone" ref="fileInput" :options="dropzoneOptions"
+                      @vdropzone-success="onFileAdded" class="d-none" />
                     <v-btn icon variant="text" @click="fileInput.$el.click()">
                       <v-icon>mdi-paperclip</v-icon>
                     </v-btn>
-                    <!-- <input ref="fileInput" type="file" multiple accept="image/*,audio/*" class="d-none"
-                      @change="attachments = Array.from($event.target.files || [])"> -->
-                    
                   </v-col>
 
                   <v-col class="px-2">
                     <v-text-field v-model="newMessage" placeholder="Type a message..." variant="outlined"
                       density="compact" hide-details />
+                    <small v-if="isTyping" class="text-gray-700">
+                      {{ selectedUser.first_name }} is typing...
+                    </small>
                   </v-col>
 
                   <v-col cols="auto d-flex align-center gap-2">
-                    <v-btn color="primary" icon @click="sendMessage">
+                    <v-btn v-if="!editMessageId" color="primary" icon @click="sendMessage">
                       <v-icon>mdi-send</v-icon>
+                    </v-btn>
+                    <v-btn v-else color="primary" icon @click="updateMessage">
+                      <v-icon>mdi-update</v-icon>
                     </v-btn>
                   </v-col>
                 </v-row>
               </v-form>
-              <AudioRecorder @recordingComplete="onAudioRecordingComplete" @recording-start="isRecording = true" @recording-stop="isRecording = false" />
+              <AudioRecorder @recordingComplete="onAudioRecordingComplete" @recording-start="isRecording = true"
+                @recording-stop="isRecording = false" />
             </v-card-actions>
           </template>
 
-          <v-card-text v-else class="d-flex align-center justify-center fill-height">
-            <span class="text-h6 text-medium-emphasis">Select a user to start chatting</span>
+          <!-- show when no any chat open -->
+          <v-card-text v-else class="d-flex flex-column align-center justify-center fill-height text-center">
+            <!-- SVG Icon -->
+            <svg width="300" class="no-chat mb-3" enable-background="new 0 0 64 64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="32" cy="32" fill="#77b3d4" r="32"/>
+              <path d="m52 32c0-9.9-9-18-20-18s-20 8.1-20 18c0 9.6 8.3 17.4 18.8 17.9.7 3.7 1.2 6.1 1.2 6.1s5-3 9.6-8.2c6.2-3.1 10.4-9 10.4-15.8z" fill="#231f20" opacity=".2"/>
+              <path d="m49 28.8c0 15-17 25.2-17 25.2s-9.4-42 0-42 17 7.5 17 16.8z" fill="#fff"/>
+              <ellipse cx="32" cy="30" fill="#fff" rx="20" ry="18"/>
+              <g fill="#4f5d73">
+                <circle cx="32" cy="30" r="2"/>
+                <circle cx="40" cy="30" r="2"/>
+                <circle cx="24" cy="30" r="2"/>
+              </g>
+            </svg>
+
+            <!-- Bottom Text -->
+            <p class="mt-3 text-secondary">Start Conversation</p>
           </v-card-text>
         </v-card>
       </v-col>
     </v-row>
   </v-container>
 
-  <FilePreview v-if="showFilePreview" :show-modal="showFilePreview" :files="attachments" v-model:message="newMessage" :show-message-input="true" @addMoreImage="fileInput.$el.click()" @close-modal="closeFilePreview" @send="sendMessage" />
+  <FilePreview v-if="showFilePreview" :show-modal="showFilePreview" :files="attachments" :loading="isSendingMessageLoading" v-model:message="newMessage"
+    :show-message-input="true" @addMoreImage="fileInput.$el.click()" @close-modal="closeFilePreview"
+    @send="sendMessage" />
 </template>
 
 <style scoped lang="scss">
 .border-r {
-  border-inline-end: 1px solid rgba(0, 0, 0, 12%);
+    border-inline-end: 1px solid rgba(0, 0, 0, 12%);
 }
 
 .border-b {
@@ -265,4 +772,87 @@ onMounted(() => {
 .border-t {
   border-block-start: 1px solid rgba(0, 0, 0, 12%);
 }
+
+.message-status {
+  display: inline-flex;
+  align-items: center;
+}
+
+.hover-container {
+  position: relative;
+}
+
+.hover-container .delete-icon {
+  z-index: 1;
+  display: none;
+  inset-block-start: 4px;
+  inset-inline-end: 4px;
+}
+
+.hover-container:hover .delete-icon {
+  display: block;
+}
+
+.messages-container {
+  overflow-y: auto;
+  height: calc(100vh - 300px);
+
+  &::-webkit-scrollbar {
+    display: none; // Hide scrollbar
+  }
+}
+
+.v-card-title {
+  padding: 8px 16px;
+}
+
+.v-btn {
+  min-width: 48px;
+  height: 48px;
+}
+
+.v-text-field {
+  font-size: 14px;
+}
+.back-button {
+  text-transform: none;
+  font-size: 16px;
+  font-weight: 500;
+  background-color: transparent !important;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+.back-button:hover {
+  color: var(--v-primary-darken2); /* Darker hover effect */
+  background-color: var(--v-primary-lighten5); /* Light background on hover */
+  border-radius: 8px;
+}
+
+.back-text {
+  margin-left: 4px;
+}
+
+@media (max-width: 992px) {
+  .user-list {
+    display: none; /* Hide user list on larger screens */
+  }
+}
+.no-chat {
+  height: calc(100vh - 350px);
+  transition: transform 0.3s ease-in-out;
+    &:hover {
+      transform: scale(1.2); /* Zoom in by 20% on hover */
+    }
+}
+
+.card-header-tabs {
+  background-color: #777286;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 10%);
+}
 </style>
+

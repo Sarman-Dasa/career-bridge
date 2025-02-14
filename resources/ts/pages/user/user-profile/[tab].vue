@@ -28,7 +28,7 @@ const tabs = [
 
 <template>
   <div>
-    <UserProfileHeader class="mb-5" />
+    <UserProfileHeader class="mb-5" v-show="activeTab !== 'message'" />
 
     <div class="d-flex justify-space-between">
   <VTabs v-model="activeTab" class="v-tabs-pill">

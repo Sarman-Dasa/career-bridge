@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Traits\ListingApiTrait;
 use App\Http\Traits\ManageFiles;
+use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -96,39 +97,61 @@ class UserController extends Controller
      */
     public function chatUserList(Request $request)
     {
-        $users = User::where('id', '!=', auth()->id());
+        $usersQuery = User::where('id', '!=', auth()->id());
+
         // Get users who have messages first
-        $usersWithMessages = User::where('id', '!=', auth()->id())
+        $usersWithMessages = (clone $usersQuery)
             ->select('id', 'first_name', 'last_name', 'profile_image', 'email')
             ->whereHas('messages', function ($query) {
                 $query->where('sender_id', auth()->id())
                     ->orWhere('receiver_id', auth()->id());
-            })
+            })->orWhereHas('receiverMessages', function ($query) {
+                $query->where('sender_id', auth()->id())
+                    ->orWhere('receiver_id', auth()->id());
+            })->where('id', '!=', auth()->id())
             ->get()
             ->map(function ($user) {
                 $lastMessage = $user->lastMessageWith(auth()->id());
+
+                // Count unread messages for the logged-in user from this user
+                // $unreadMessagesCount = Message::where('sender_id', $user->id)
+                //     ->where('receiver_id', auth()->id())
+                //     ->where('is_seen', false)
+                //     ->count();
+
+                // Get unread messages count using relationship
+                $unreadMessagesCount = $user->messages()
+                    ->where('receiver_id', auth()->id())  // Messages received by logged-in user
+                    ->where('is_seen', false)  // Unread messages
+                    ->count();
+
                 $user->with_last_message = [
                     'message' => $lastMessage->message ?? null,
                     'created_at' => $lastMessage->created_at ?? null,
-                    'attachments' => $lastMessage->attachments ?? null
+                    'attachments' => $lastMessage->attachments ?? null,
+                    'unread_messages' => $unreadMessagesCount
                 ];
                 return $user;
-            });
+            })
+            ->sortByDesc(function ($user) {
+                return $user->with_last_message['created_at'];
+            })->values();
+
+
+        $userIds = $usersWithMessages->pluck('id')->toArray();
 
         // Get users without messages
-        $usersWithoutMessages = User::where('id', '!=', auth()->id())
-            ->select('id', 'first_name', 'last_name', 'profile_image', 'email')
-            ->whereDoesntHave('messages', function ($query) {
-                $query->where('sender_id', auth()->id())
-                    ->orWhere('receiver_id', auth()->id());
-            })
-            ->get();
+        $usersWithoutMessages = $usersQuery->whereNotIn('id', $userIds)
+            ->select('id', 'first_name', 'last_name', 'profile_image', 'email')->get();
 
-        // Combine the collections with users with messages first
-        $users = $usersWithMessages->concat($usersWithoutMessages);
+        // // Combine the collections with users with messages first
+        // $users = $usersWithMessages->concat($usersWithoutMessages);
 
         return ok(__('strings.user.list'), [
-            'users' => $users,
+            'chat_users' => $usersWithMessages,
+            'chat_users_count' => $usersWithMessages->count(),
+            'contact_users' => $usersWithoutMessages,
+            'contact_users_count' => $usersWithoutMessages->count(),
         ]);
     }
 }

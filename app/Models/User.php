@@ -147,17 +147,27 @@ class User extends Authenticatable
         return $this->hasMany(Message::class, 'sender_id');
     }
 
+    public function receiverMessages()
+    {
+        return $this->hasMany(Message::class, 'receiver_id');
+    }
+
+    public function unreadMessages()
+    {
+        return $this->hasMany(Message::class, 'receiver_id')->where('is_seen', false);
+    }
+
     public function lastMessageWith($userId)
     {
         $message = Message::where(function ($query) use ($userId) {
-                $query->where(function ($q) use ($userId) {
-                    $q->where('sender_id', $this->id)
-                      ->where('receiver_id', $userId);
-                })->orWhere(function ($q) use ($userId) {
-                    $q->where('sender_id', $userId)
-                      ->where('receiver_id', $this->id);
-                });
-            })
+            $query->where(function ($q) use ($userId) {
+                $q->where('sender_id', $this->id)
+                    ->where('receiver_id', $userId);
+            })->orWhere(function ($q) use ($userId) {
+                $q->where('sender_id', $userId)
+                    ->where('receiver_id', $this->id);
+            });
+        })
             ->with('attachments')
             ->latest()
             ->first();

@@ -6,6 +6,7 @@ use App\Http\Traits\ListingApiTrait;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class ConnectionsController extends Controller
 {
@@ -29,12 +30,12 @@ class ConnectionsController extends Controller
         $receivedConnections = $this->filterSortPagination($receivedConnectionsQuery);
 
         return ok("connections list", [
-            'sentConnections' => $sentConnections['query']->get(),
+            'sentConnections'     => $sentConnections['query']->get(),
             'receivedConnections' => $receivedConnections['query']->get(),
-            'count' => [
-                'sent' => $sentConnections['count'],
+            'count'               => [
+                'sent'     => $sentConnections['count'],
                 'received' => $receivedConnections['count'],
-            ]
+            ],
         ]);
     }
     public function create(Request $request)
@@ -73,7 +74,7 @@ class ConnectionsController extends Controller
 
         // Send the connection request
         $user->connections()->attach($request->connection_id, [
-            'status' => 'P', // Pending
+            'status'            => 'P', // Pending
             'request_send_date' => now(),
         ]);
 
@@ -131,7 +132,7 @@ class ConnectionsController extends Controller
     // View pending connection requests for the authenticated user
     public function pendingRequests()
     {
-        $user = Auth::user();
+        $user            = Auth::user();
         $pendingRequests = $user->connectionRequestsReceived()->get();
 
         // Check if there are no pending requests
@@ -141,7 +142,7 @@ class ConnectionsController extends Controller
 
         return ok(__('strings.connection.pending_requests'), [
             'requests' => $pendingRequests,
-            'count'  => $pendingRequests->count()
+            'count'    => $pendingRequests->count(),
         ]);
     }
 
@@ -174,6 +175,113 @@ class ConnectionsController extends Controller
         return ok(__('strings.connection.suggested_connections'), [
             'suggestedConnections'  => $suggestedConnections['query']->get(),
             'count'                 => $suggestedConnections['count']
+        ]);
+    }
+
+
+    // public function ConnectedUserList(Request $request)
+    // {
+    //     $userId = Auth::id();
+
+    //     $sortBy    = $request->input('sort_by', 'first_name'); // Default sorting column
+    //     $sortOrder = $request->input('sort_order', 'ASC');     // Default sorting order
+
+    //     // Raw SQL query
+    //     $query = "WITH SentConnections AS (
+    //         SELECT
+    //             u.id,
+    //             u.first_name,
+    //             u.last_name,
+    //             CONCAT(u.first_name, ' ', u.last_name) AS full_name, 
+    //             u.profile_image,
+    //             u.mobile
+    //         FROM users u
+    //         JOIN connections c ON u.id = c.connection_id
+    //         WHERE c.user_id = ?
+    //         AND c.status = 'A'
+    //         AND (u.first_name LIKE '%' || ? || '%' OR u.last_name LIKE '%' || ? || '%' OR CONCAT(u.first_name, ' ', u.last_name) LIKE '%' || ? || '%')
+    //     ),
+
+    //     ReceivedConnections AS (
+    //         SELECT
+    //             u.id,
+    //             u.first_name,
+    //             u.last_name,
+    //             CONCAT(u.first_name, ' ', u.last_name) AS full_name, 
+    //             u.profile_image,
+    //             u.mobile
+    //         FROM users u
+    //         JOIN connections c ON u.id = c.user_id
+    //         WHERE c.connection_id = ?
+    //         AND c.status = 'A'
+    //         AND (u.first_name LIKE '%' || ? || '%' OR u.last_name LIKE '%' || ? || '%' OR CONCAT(u.first_name, ' ', u.last_name) LIKE '%' || ? || '%')
+    //     )
+
+    //     SELECT * FROM SentConnections
+    //     UNION
+    //     SELECT * FROM ReceivedConnections
+    //     ORDER BY $sortBy $sortOrder
+    //     LIMIT ? OFFSET ? ";
+
+    //     // Execute the query
+    //     $connections = DB::select($query, [$userId, $request->search, $request->search, $request->search, $userId,  $request->search, $request->search, $request->search, $request->per_page, $request->per_page * ($request->page - 1)]);
+
+    //     return ok(__('strings.user.list'), [
+    //         'connections' => $connections,
+    //         'count'       => count($connections),
+    //     ]);
+    // }
+
+    public function ConnectedUserList(Request $request)
+    {
+        $userId = Auth::id();
+
+        $searchTerm = trim($request->input('search', ''));
+        $sortBy     = $request->input('sort_by', 'first_name');
+        $sortOrder  = strtoupper($request->input('sort_order', 'ASC')) === 'DESC' ? 'DESC' : 'ASC';
+        $perPage    = (int) $request->input('per_page', 10);
+        $offset     = $perPage * ((int) $request->input('page', 1) - 1);
+
+        $searchCondition = $searchTerm ? "AND (LOWER(u.first_name) LIKE LOWER(?) OR LOWER(u.last_name) LIKE LOWER(?) OR LOWER(CONCAT(u.first_name, ' ', u.last_name)) LIKE LOWER(?))" : "";
+
+        $query = "
+        WITH SentConnections AS (
+            SELECT u.id, u.first_name, u.last_name, CONCAT(u.first_name, ' ', u.last_name) AS full_name, 
+                   u.profile_image, u.mobile
+            FROM users u
+            JOIN connections c ON u.id = c.connection_id
+            WHERE c.user_id = ? AND c.status = 'A' $searchCondition
+        ),
+        ReceivedConnections AS (
+            SELECT u.id, u.first_name, u.last_name, CONCAT(u.first_name, ' ', u.last_name) AS full_name, 
+                   u.profile_image, u.mobile
+            FROM users u
+            JOIN connections c ON u.id = c.user_id
+            WHERE c.connection_id = ? AND c.status = 'A' $searchCondition
+        )
+     
+        SELECT * FROM SentConnections
+        UNION
+        SELECT * FROM ReceivedConnections
+        ORDER BY $sortBy $sortOrder
+        LIMIT ? OFFSET ? ";
+
+        $bindings = [$userId];
+
+        if ($searchTerm) {
+            array_push($bindings, "%$searchTerm%", "%$searchTerm%", "%$searchTerm%");
+            array_push($bindings, $userId, "%$searchTerm%", "%$searchTerm%", "%$searchTerm%");
+        } else {
+            array_push($bindings, $userId);
+        }
+
+        array_push($bindings, $perPage, $offset);
+
+        $connections = DB::select($query, $bindings);
+
+        return ok(__('strings.user.list'), [
+            'connections' => $connections,
+            'count'       => count($connections),
         ]);
     }
 }

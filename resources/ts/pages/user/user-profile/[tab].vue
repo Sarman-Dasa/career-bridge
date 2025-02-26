@@ -31,16 +31,16 @@ const tabs = [
     <UserProfileHeader class="mb-5" v-show="activeTab !== 'message'" />
 
     <div class="d-flex justify-space-between">
-  <VTabs v-model="activeTab" class="v-tabs-pill">
-      <VTab v-for="item in tabs" :key="item.icon" :value="item.tab"
-        :to="{ name: 'user-user-profile-tab', params: { tab: item.tab } }">
-        <VIcon size="20" start :icon="item.icon" />
-        {{ item.title }}
-      </VTab>
-    </VTabs>
+      <VTabs v-model="activeTab" class="v-tabs-pill">
+        <VTab v-for="item in tabs" :key="item.icon" :value="item.tab"
+          :to="{ name: 'user-user-profile-tab', params: { tab: item.tab } }">
+          <VIcon size="20" start :icon="item.icon" />
+          {{ item.title }}
+        </VTab>
+      </VTabs>
 
-    <AddNewPost v-if="activeTab === 'post'" />
-</div>
+      <AddNewPost v-if="activeTab === 'post'" />
+    </div>
 
     <VWindow v-model="activeTab" class="mt-5 disable-tab-transition" :touch="false">
       <!-- Profile -->

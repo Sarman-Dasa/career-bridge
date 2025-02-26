@@ -15,6 +15,10 @@ use App\Models\User;
 use Illuminate\Support\Facades\Mail;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Log;
+use App\Events\GroupMessageSent;
+use App\Models\GroupMember;
+
+use function PHPUnit\Framework\isNull;
 
 class MessagesController extends Controller
 {
@@ -132,7 +136,10 @@ class MessagesController extends Controller
 
         $message->update($request->only('message', 'is_edited'));
 
-        broadcast(new MessageSent($message, 'updated'))->toOthers();
+        if (!isset($message->group_id))
+            broadcast(new MessageSent($message, 'updated'))->toOthers();
+        else
+            broadcast(new GroupMessageSent($message, 'updated'))->toOthers();
 
         return ok(__('strings.message.update'), [
             'message' => $message
@@ -151,7 +158,12 @@ class MessagesController extends Controller
             $attachment->delete();
         }
 
-        broadcast(new MessageSent($message, 'deleted'))->toOthers();
+
+
+        if (!isset($message->group_id))
+            broadcast(new MessageSent($message, 'deleted'))->toOthers();
+        else
+            broadcast(new GroupMessageSent($message, 'deleted'))->toOthers();
 
         $message->delete();
 
@@ -309,6 +321,97 @@ class MessagesController extends Controller
         return response($pdf->output(), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="my_filename_test.pdf"'
+        ]);
+    }
+
+    public function sendGroupMessage(Request $request)
+    {
+        $request->validate([
+            'group_id' => 'required|exists:groups,id',
+            'message' => 'required_without_all:files,audio|nullable|string|max:1000',
+            'files' => 'required_without_all:message,audio|nullable|array',
+            'files.*' => 'nullable|mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx',
+            'audio' => 'required_without_all:message,files|nullable',
+        ]);
+
+        // Check if user is member of the group
+        $isMember = GroupMember::where('group_id', $request->group_id)
+            ->where('user_id', auth()->id())
+            ->exists();
+
+        if (!$isMember) {
+            return error('You are not a member of this group', 403);
+        }
+
+        $message = Message::create([
+            'sender_id' => auth()->id(),
+            'group_id' => $request->group_id,
+            'message' => $request->message,
+            'is_sent' => true,
+        ]);
+
+        // Handle attachments like before
+        $newAttachment = [];
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $newAttachment[] = [
+                    'file_path' => $this->uploadToFirebase($file, 'group_chat_attachments/' . $request->group_id),
+                    'file_name' => $file->getClientOriginalName(),
+                ];
+            }
+        }
+
+        if ($request->hasFile('audio')) {
+            $file = $request->file('audio');
+            $fileName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+            $uniqueFileName = $fileName . Str::random(3) . '.mp3';
+            $newAttachment[] = [
+                'file_path' => $this->uploadToFirebase($file, 'group_chat_audio/' . $request->group_id, true),
+                'file_name' => $uniqueFileName,
+                'is_audio_file' => true
+            ];
+        }
+
+        $message->attachments()->createMany($newAttachment);
+
+        broadcast(new GroupMessageSent($message, 'sent'))->toOthers();
+
+        return ok(__('strings.message.sent'), [
+            'message' => $message->load(['attachments', 'sender'])
+        ]);
+    }
+
+    public function getGroupMessages(Request $request)
+    {
+        $this->ListingValidation();
+
+        $messages = Message::where('group_id', $request->group_id)
+            ->with(['sender', 'attachments']);
+
+        $request['sort_field'] = 'created_at';
+        $request['sort_order'] = 'desc';
+
+        $messages = $this->filterSortPagination($messages);
+        $count = $messages['count'];
+
+
+
+        $totalPages = ceil($count / $request->per_page);
+
+
+        $groupedMessages = $messages['query']->get()
+            ->reverse()
+            ->groupBy(function ($message) {
+                return $message->created_at->format('d M Y');
+            })
+            ->map(function ($group) {
+                return $group->values();
+            });
+
+        return ok(__('strings.message.list'), [
+            'messages' => $groupedMessages,
+            'count' => $count,
+            'total_pages' => $totalPages
         ]);
     }
 }

@@ -73,5 +73,17 @@ return [
         "list" => "Message list.",
         "update" => "Message updated successfully.",
         "delete" => "Message deleted successfully."
-    ]
+    ],
+
+    "group" => [
+        'list' => 'Groups retrieved successfully',
+        'created' => 'Group created successfully',
+        'updated' => 'Group updated successfully',
+        'deleted' => 'Group deleted successfully',
+        'members_added' => 'Members added successfully',
+        'member_removed' => 'Member removed successfully',
+        'role_updated' => 'Member role updated successfully',
+        'not_admin' => 'You are not an admin of this group',
+        'last_admin' => 'Cannot remove the last admin from the group',
+    ],
 ];

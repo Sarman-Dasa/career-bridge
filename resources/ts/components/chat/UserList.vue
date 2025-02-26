@@ -7,7 +7,7 @@ interface User {
   full_name: string;
   profile_image?: string;
   is_online?: boolean;
-  with_last_message?: {
+  last_message?: {
     message?: string;
     unread_messages?: number;
   };
@@ -40,7 +40,7 @@ const emit = defineEmits<{
         .join("")
     );
 
- const lastMessage = computed(() => props.user.with_last_message?.message || "");
+ const lastMessage = computed(() => props.user.last_message?.message || "");
 
  const onSelect = () => {
     emit("selectUser", props.user);
@@ -73,8 +73,8 @@ const emit = defineEmits<{
     <v-list-item-subtitle class="text-truncate ml-2">{{ lastMessage }}</v-list-item-subtitle>
     <template v-slot:append>
       <v-badge
-        v-if="isChatUser && user.with_last_message?.unread_messages > 0"
-        :content="user.with_last_message.unread_messages"
+        v-if="isChatUser && user.last_message?.unread_messages > 0"
+        :content="user.last_message.unread_messages"
         color="error"
         inline
       ></v-badge>

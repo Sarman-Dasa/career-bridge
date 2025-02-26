@@ -58,7 +58,8 @@ const tabs = [
 ]
 
 const groups = ref<Group[]>([])
-const groupsCount = ref(0) 
+const groupsCount = ref(0)
+const isGroupDetailPage = ref(false);
 
 const dropzoneOptions = {
   url: `${import.meta.env.VITE_API_URL}/image-upload`,
@@ -328,6 +329,7 @@ const selectUser = (user: User) => {
   resetData.value = !resetData.value;
   isChatOpen.value = true;
   isGroupMessage.value = false
+ 
   // loadMoreMessages();
 }
 
@@ -339,12 +341,13 @@ const selectGroup = (group: User) => {
   resetData.value = !resetData.value;
   isChatOpen.value = true;
   isGroupMessage.value = true
-  setGroupChannel()
+  isGroupDetailPage.value = false
 }
 
 const closeChat = () => {
   selectedUser.value = null;
   isChatOpen.value = false;
+  isGroupDetailPage.value = false
 };
 
 const lastMessage = (user: User) => {
@@ -830,7 +833,7 @@ onBeforeUnmount(() => {
 
       <!-- Chat Area -->
       <v-col cols="12" md="9" :class="{'user-list':isMobile && !isChatOpen}">
-        <v-card>
+        <v-card v-if="!isGroupDetailPage">
           <template v-if="selectedUser">
             <!-- Chat Header -->
             <v-card-title class="py-4 px-4 border-b d-flex justify-space-between mb-1 card-header-tabs">
@@ -854,7 +857,7 @@ onBeforeUnmount(() => {
               </div>
              </div>
 
-             <div class="align-center d-flex" v-else>
+             <div v-else class="align-center d-flex cursor-pointer" @click="isGroupDetailPage = true">
               <v-avatar size="40" class="mr-3">
                 <v-img v-if="selectedUser.image" :src="selectedUser.image" :alt="selectedUser.first_name" />
                 <span v-else >{{ avatarText(selectedUser.name) }}</span>
@@ -871,6 +874,7 @@ onBeforeUnmount(() => {
             </v-btn>
             </v-card-title>
 
+            <div>
             <!-- Messages Area -->
             <MessageList
               ref="childRef"
@@ -887,6 +891,8 @@ onBeforeUnmount(() => {
               @deleteAttachment="deleteMessageAttachment"
               @itemClick="handleItemClick"
             />
+        
+  
 
             <!-- Message Input -->
             <v-card-actions class="pa-4 border-t">
@@ -924,6 +930,7 @@ onBeforeUnmount(() => {
               <AudioRecorder @recordingComplete="onAudioRecordingComplete" @recording-start="isRecording = true"
                 @recording-stop="isRecording = false" />
             </v-card-actions>
+          </div>  
           </template>
 
           <!-- show when no any chat open -->
@@ -944,6 +951,9 @@ onBeforeUnmount(() => {
             <!-- Bottom Text -->
             <p class="mt-3 text-secondary">Start Conversation</p>
           </v-card-text>
+        </v-card>
+        <v-card v-else>
+          <GroupDetail :groupId="selectedUser?.id" :loggedInUser="loggedInUser" @closeDetail="isGroupDetailPage = false"/>
         </v-card>
       </v-col>
     </v-row>

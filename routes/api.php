@@ -53,6 +53,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::delete('delete/{id}', 'delete');
         Route::get('pending', 'pendingRequests');
         Route::post('suggest-connection', 'suggestConnections');
+        Route::post('connected-user-list', 'ConnectedUserList');
     });
 
 

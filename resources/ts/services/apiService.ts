@@ -70,12 +70,17 @@ export const deleteRequest = async <T>(
   url: string,
   config?: AxiosRequestConfig
 ): Promise<ApiResponse<T>> => {
-  const response: AxiosResponse<T> = await axiosIns.delete(url, config);
-  return {
-    data: response.data,
-    status: response.status,
-    message: response.statusText,
-  };
+  try {
+    const response: AxiosResponse<T> = await axiosIns.delete(url, config);
+    return {
+      data: response.data,
+      status: response.status,
+      message: response.statusText,
+    };
+  }catch (error) {
+    showToast("error", error.message);
+    console.log('error: ', error);
+  }
 };
 
 function showError(e: any) {

@@ -160,14 +160,10 @@ class GroupController extends Controller
 
         $group = Group::findOrFail($id);
 
-        $group = Group::with(['members.user', 'creator', 'lastMessage'])
-            ->whereHas('members', function ($query) {
-                $query->where('user_id', auth()->id());
-            });
-
+        $group = $group->load(['members.user', 'creator', 'lastMessage']);
 
         return ok(__('strings.group.view'), [
-            'groups' => $group->get(),
+            'group' => $group,
         ]);
     }
 
@@ -227,7 +223,7 @@ class GroupController extends Controller
         if ($isAdmin && $memberId === auth()->id()) {
             $adminCount = $group->members()->where('role', 'admin')->count();
             if ($adminCount <= 1) {
-                return error(__('strings.group.last_admin'), 403);
+                return error(__('strings.group.last_admin'), [], 'validation');
             }
         }
 

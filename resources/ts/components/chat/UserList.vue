@@ -1,5 +1,7 @@
 <script setup lang="ts">
 
+
+
 interface User {
   id: number;
   first_name: string;
@@ -26,13 +28,35 @@ const props = defineProps({
       type: Boolean,
       default: false,
     },
+    role: {
+      type:String,
+      default:null
+    },
+    createdBy: {
+      type:Object as () => User,
+      default: null,
+    },
+    actionButtonShow: {
+      type: Boolean,
+      default: false,
+    },
+    selectedData: {
+      type: Array,
+      default:[]
+    },
+    showSelectedIcon: {
+      type:Boolean,
+      default: false,
+    }
 })
 const emit = defineEmits<{
   (e: 'selectUser', Object:User): void;
+  (e:'handleActionButton',Object: Object): Object
 }>();
 
- const isSelected = computed(() => props.selectedUser?.id === props.user.id);
+ const isSelected = computed(() => props.selectedUser?.id === props.user.id || props.selectedData.includes(props.user?.id));
  
+
  const avatarText = computed(() =>
       props.user.full_name
         .split(" ")
@@ -45,10 +69,18 @@ const emit = defineEmits<{
  const onSelect = () => {
     emit("selectUser", props.user);
   };
+  const action = (action) => {
+    let obj = {
+      action:action,
+      id:props.user.id
+    }
+    emit("handleActionButton",obj)
+  }
+
 </script>
 
 <template>
-  <v-list-item :active="isSelected" @click="onSelect" class="rounded-lg mb-1">
+  <v-list-item :active="isSelected && !showSelectedIcon" @click="onSelect" class="rounded-lg mb-1">
     <template v-slot:prepend>
       <VBadge
         v-if="isChatUser"
@@ -69,8 +101,11 @@ const emit = defineEmits<{
         <span v-else>{{ avatarText }}</span>
       </v-avatar>
     </template>
-    <v-list-item-title class="text-truncate ml-2">{{ user.first_name }} {{ user.last_name }}</v-list-item-title>
-    <v-list-item-subtitle class="text-truncate ml-2">{{ lastMessage }}</v-list-item-subtitle>
+    <v-list-item-title class="text-truncate ml-2">{{ user.first_name }} {{ user.last_name }}
+      <v-icon v-if="showSelectedIcon && isSelected" icon="mdi-check" size="12" color="success"></v-icon>
+    </v-list-item-title>
+    <v-list-item-subtitle v-if="props?.role" class="text-truncate ml-2">{{ props?.role }}</v-list-item-subtitle>
+    <v-list-item-subtitle v-else class="text-truncate ml-2">{{ lastMessage }}</v-list-item-subtitle>
     <template v-slot:append>
       <v-badge
         v-if="isChatUser && user.last_message?.unread_messages > 0"
@@ -78,6 +113,9 @@ const emit = defineEmits<{
         color="error"
         inline
       ></v-badge>
+      <div v-if="actionButtonShow">
+        <v-icon icon="tabler-user-x" color="rgb(155 65 65 / 91%)" @click="action('delete')"></v-icon>
+      </div>
     </template>
   </v-list-item>
 </template>

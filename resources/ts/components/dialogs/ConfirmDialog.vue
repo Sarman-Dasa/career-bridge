@@ -6,12 +6,16 @@ interface Props {
   confirmMsg: string
   cancelTitle: string
   cancelMsg: string
+  showSuccessDialog:boolean
 }
 
 interface Emit {
   (e: 'update:isDialogVisible', value: boolean): void
   (e: 'confirm', value: boolean): void
+  (e: 'closeSuccessDialog'):void
 }
+
+
 
 const props = defineProps<Props>()
 
@@ -20,6 +24,9 @@ const emit = defineEmits<Emit>()
 const unsubscribed = ref(false)
 const cancelled = ref(false)
 
+watch(props, () => {
+  unsubscribed.value = props.showSuccessDialog
+})
 const updateModelValue = (val: boolean) => {
   emit('update:isDialogVisible', val)
 }
@@ -27,7 +34,6 @@ const updateModelValue = (val: boolean) => {
 const onConfirmation = () => {
   emit('confirm', true)
   updateModelValue(false)
-  unsubscribed.value = true
 }
 
 const onCancel = () => {
@@ -107,7 +113,7 @@ const onCancel = () => {
 
         <VBtn
           color="success"
-          @click="unsubscribed = false"
+          @click="unsubscribed = false,emit('closeSuccessDialog')"
         >
           Ok
         </VBtn>

@@ -180,6 +180,12 @@ class User extends Authenticatable
         return $this->belongsToMany(Group::class, 'group_members', 'user_id', 'group_id');
     }
 
+    // public function getProfileImageAttribute($value)
+    // {
+    //     $baseUrl = env('APP_URL') . '/storage/';
+    //     return $value ? $value : $baseUrl . '/userProfile.png';
+    // }
+
     // public function withLastMessage()
     // {
     //     return $this->hasOne(Message::class, 'sender_id')

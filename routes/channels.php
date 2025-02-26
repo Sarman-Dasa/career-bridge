@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Group;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -23,4 +24,14 @@ Broadcast::channel('chat.{receiverId}', function ($user, $receiverId) {
 
 Broadcast::channel('presence.chat', function ($user) {
     return ['id' => $user->id, 'name' => $user->first_name];
+});
+
+// Broadcast::channel('group.{groupId}', function ($user, $groupId) {
+//     return Group::where('id', $groupId)
+//         ->whereHas('members', fn($query) => $query->where('user_id', $user->id))
+//         ->exists();
+// });
+
+Broadcast::channel('group.messages', function ($user) {
+    return $user->groups()->exists(); // Check if the user is in any group
 });

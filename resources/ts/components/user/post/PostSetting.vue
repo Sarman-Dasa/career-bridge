@@ -4,7 +4,7 @@ import { defineEmits, defineProps } from 'vue';
 const props = defineProps<{
   showModal: boolean;
   postSetting: Object
-  isEdit: boolean
+  isEdit?: boolean
 }>();
 
 const emits = defineEmits<{

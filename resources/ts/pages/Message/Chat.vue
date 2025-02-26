@@ -1,11 +1,13 @@
 <script lang="ts" setup>
 import { avatarText } from '@/@core/utils/formatters';
+import GroupList from '@/components/chat/GroupList.vue';
 import MessageList from '@/components/chat/MessageList.vue';
 import UserListItem from '@/components/chat/UserList.vue';
 import FilePreview from '@/components/user/post/FilePreview.vue';
 import echo from '@/plugins/echo';
+import { useDebouncedRef } from '@/ref/debouncedRef';
 import { deleteRequest, postRequest, putRequest } from '@/services/apiService';
-import type { Message, User } from '@/types';
+import type { Group, Message, User } from '@/types';
 import VueDropzone from "dropzone-vue3";
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useUserStore } from '../user-profile/useUserStore';
@@ -26,7 +28,7 @@ const messages = ref<Record<string, Message[]>>({});
 const newMessage = ref('')
 const attachments = ref<File[]>([])
 const loading = ref(false)
-const selectedUser = ref<User | null>(null)
+const selectedUser = ref<User | Group | null>(null)
 const showFilePreview = ref(false)
 const isTyping = ref(false)
 const typingTimeout = ref<NodeJS.Timeout>()
@@ -42,6 +44,21 @@ const totalPages = ref(0)
 const childRef = ref(null);
 const isMobile = ref(false); // Detect mobile view
 const isChatOpen = ref(false); // Toggle between user list and chat
+const search = useDebouncedRef(null,500);
+const isGroupMessage = ref(false)
+const typingGroupMember = ref()
+
+// Set default tab if not defined
+const sidebarActiveTab = ref('user')
+
+// tabs
+const tabs = [
+  { title: 'User', icon: 'tabler-user', tab: 'user' },
+  { title: 'Group', icon: 'tabler-users', tab: 'group' },
+]
+
+const groups = ref<Group[]>([])
+const groupsCount = ref(0) 
 
 const dropzoneOptions = {
   url: `${import.meta.env.VITE_API_URL}/image-upload`,
@@ -64,7 +81,10 @@ const editMessageId = ref<string | null>(null)
 
 const fetchUsers = async () => {
   try {
-    const response = await postRequest('/user/chat-user-list', {}, false)
+    let input = {
+      search:search.value
+    }
+    const response = await postRequest('/user/chat-user-list', input, false)
     chatUsers.value = response.data.chat_users
     contactUsers.value = response.data.contact_users
     chatUsersCount.value = response.data.chat_users_count
@@ -74,15 +94,38 @@ const fetchUsers = async () => {
   }
 }
 
+const fetchGroups = async () => {
+  try {
+    let input = {
+      search:search.value
+    }
+    const response = await postRequest('/group', input, false)
+    groups.value = response.data.groups
+    groupsCount.value = response.data.count
+  } catch (error) {
+    console.error(error)
+  }
+}
+
 const loadMoreMessages = async ($state: any) => {
 
   try {
     isLoadingMore.value = true;
-    const response = await postRequest('/message/receive', {
-      user_id: selectedUser.value?.id,
-      per_page: perPage.value,
-      page: page.value
-    }, false);
+
+    let response;
+    if (sidebarActiveTab.value === 'group') {
+      response = await postRequest('/message/group/receive-message',{
+        group_id:selectedUser.value?.id,
+        per_page: perPage.value,
+        page: page.value
+      },false);
+    } else {
+      response = await postRequest('/message/receive', {
+        user_id: selectedUser.value?.id,
+        per_page: perPage.value,
+        page: page.value
+      }, false);
+    }
 
     const newMessages = response.data.messages;
     totalPages.value = response.data.total_pages
@@ -108,7 +151,7 @@ const loadMoreMessages = async ($state: any) => {
         .filter((m: Message) => !m.is_seen && m.sender_id !== loggedInUser.value?.id)
         .map((m: Message) => m.id);
 
-      if (unseenMessages.length) {
+      if (unseenMessages.length && sidebarActiveTab.value === 'user') {
         markAsSeen(unseenMessages);
       }
     } else {
@@ -128,7 +171,10 @@ const sendMessage = async (audioBlob?: Blob) => {
   if (!newMessage.value && attachments.value.length === 0 && !audioBlob || !selectedUser.value) return
 
   const formData = new FormData()
-  formData.append('user_id', selectedUser.value.id)
+  if(sidebarActiveTab.value === 'user')
+    formData.append('user_id', selectedUser.value.id)
+  else
+    formData.append('group_id', selectedUser.value.id)
   formData.append('message', newMessage.value)
   if (audioBlob && audioBlob.type === 'audio/mp3') {
     formData.append('audio', audioBlob, 'recording.wav')
@@ -137,8 +183,9 @@ const sendMessage = async (audioBlob?: Blob) => {
     formData.append('files[]', file)
   })
 
+  const URL = sidebarActiveTab.value === "user" ? '/message/send' : '/message/group/send'
   try {
-    const response = await postRequest('/message/send', formData, false, {
+    const response = await postRequest(URL, formData, false, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -166,7 +213,7 @@ const sendMessage = async (audioBlob?: Blob) => {
 
     // Update last message for selected user
     if (selectedUser.value) {
-      selectedUser.value.with_last_message = {
+      selectedUser.value.last_message = {
         message: message.message,
         created_at: message.created_at,
         attachments: message.attachments
@@ -231,7 +278,7 @@ const deleteMessage = async (messageId: string) => {
           if (lastDateKey) {
             const lastMessageGroup = messages.value[lastDateKey];
             const lastMessage = lastMessageGroup[lastMessageGroup.length - 1];
-            selectedUser.value.with_last_message = {
+            selectedUser.value.last_message = {
               message: lastMessage.message,
               created_at: lastMessage.created_at,
               attachments: lastMessage.attachments
@@ -280,7 +327,19 @@ const selectUser = (user: User) => {
   totalPages.value = 0;
   resetData.value = !resetData.value;
   isChatOpen.value = true;
+  isGroupMessage.value = false
   // loadMoreMessages();
+}
+
+const selectGroup = (group: User) => {
+  selectedUser.value = group;
+  page.value = 1;
+  messages.value = {}
+  totalPages.value = 0;
+  resetData.value = !resetData.value;
+  isChatOpen.value = true;
+  isGroupMessage.value = true
+  setGroupChannel()
 }
 
 const closeChat = () => {
@@ -289,7 +348,7 @@ const closeChat = () => {
 };
 
 const lastMessage = (user: User) => {
-  return user.with_last_message?.message || (user.with_last_message?.attachments?.length ? 'Attachment' : 'No messages yet')
+  return user.last_message?.message || (user.last_message?.attachments?.length ? 'Attachment' : 'No messages yet')
 }
 
 const closeFilePreview = () => {
@@ -310,9 +369,16 @@ const onAudioRecordingComplete = (audioBlob: Blob) => {
 
 const emitTyping = () => {
   if (selectedUser.value) {
-    echo.private(`chat.${selectedUser.value.id}`).whisper('typing', {
-      user: loggedInUser.value
-    });
+    if(!isGroupMessage.value) {
+      echo.private(`chat.${selectedUser.value.id}`).whisper('typing', {
+        user: loggedInUser.value
+      });
+    }
+    else {
+      echo.private('group.messages').whisper('typing', {
+        user: loggedInUser.value
+      });
+    }
   }
 }
 
@@ -325,9 +391,16 @@ const handleTyping = () => {
 
   typingTimeout.value = setTimeout(() => {
     if (selectedUser.value) {
-      echo.private(`chat.${selectedUser.value.id}`).whisper('stopTyping', {
-        user: loggedInUser.value
-      });
+      if(!isGroupMessage.value) {
+        echo.private(`chat.${selectedUser.value.id}`).whisper('stopTyping', {
+          user: loggedInUser.value
+        });
+      }
+      else {
+        echo.private(`group.messages`).whisper('stopTyping', {
+          user: loggedInUser.value
+        });
+      }
     }
   }, 1000)
 }
@@ -355,7 +428,7 @@ const markAsSeen = async (messageIds: string[]) => {
          
             message.is_seen = true;
             message.seen_at = new Date().toISOString();
-            selectedUser.value.with_last_message = {
+            selectedUser.value.last_message = {
               unread_messages: 0
             }
         }
@@ -409,15 +482,92 @@ watch(() => newMessage.value, (newVal) => {
   }
 })
 
+watch(search, () => {
+  fetchUsers()
+});
+
+watch(sidebarActiveTab,() => {
+  isGroupMessage.value = false
+  closeChat()
+})
+
+function handleMessageEvent(message:Message,type:string) {
+  switch (type) {
+    case 'sent':
+        // Get today's date as key
+      const today = new Date().toLocaleDateString('en-GB', { 
+        day: 'numeric',
+        month: 'short', 
+        year: 'numeric'
+      }).replace(',', ''); // Remove the comma if needed
+      
+      if (!messages.value[today]) {
+        messages.value[today] = [];
+      }
+      messages.value[today].push(message);
+      childRef?.value?.showNewMessage(); // Call the child function to show lates message 
+      updateMessageStatus(message, 'seen');
+      // Update last message for selected user
+      if (selectedUser.value) {
+        selectedUser.value.last_message = {
+          message: message.message,
+          created_at: message.created_at,
+          attachments: message.attachments
+        };
+      }
+      break;
+    case 'updated':
+    const dateKey = Object.keys(messages.value).find(date =>
+      messages.value[date].some((m: Message) => m.id === message.id)
+    );
+
+    if(dateKey) {
+        const index = messages.value[dateKey].findIndex((m: Message) => m.id === message.id);
+        if (index !== -1) {
+          messages.value[dateKey][index] = message;
+          // Update last message if needed
+          if (index === messages.value[dateKey].length - 1 && selectedUser.value) {
+            selectedUser.value.last_message = {
+              message: message.message,
+              created_at: message.created_at,
+              attachments: message.attachments
+            };
+          }
+        }
+      }
+      break;
+    case 'deleted':
+      for (const [date, messageGroup] of Object.entries(messages.value)) {
+        const index = messageGroup.findIndex((m: Message) => m.id === message.id);
+        if (index !== -1) {
+          messages.value[date].splice(index, 1);
+          if (messages.value[date].length === 0) {
+            delete messages.value[date];
+          }
+          break;
+        }
+      }
+      break;
+  }
+}
+
 onMounted(async () => {
   await fetchUsers();
+  await fetchGroups()
   checkScreenSize();
   window.addEventListener("resize", checkScreenSize);
 
+  // Testing code for typing event listen for group 
+  // const interval = setInterval(() => {
+  //   newMessage.value = `Updated at ${new Date().toLocaleTimeString()}`;
+  // }, 2000); // Updates every 2 seconds
+
+  // onUnmounted(() => {
+  //   clearInterval(interval); // Cleanup to prevent memory leaks
+  // });
 
   echo.private(`chat.${loggedInUser.value?.id}`)
     .listen('.MessageEvent', (e: { message: Message; type: string }) => {
-      console.log("type::",e.type);
       // Only process messages from selected user
       // If message is from a different user than currently selected
       if (e.message.sender_id !== selectedUser.value?.id && e.type === 'sent') {
@@ -435,11 +585,11 @@ onMounted(async () => {
         }
         // Update the last message for this user
         if (user) {
-          user.with_last_message = {
+          user.last_message = {
             message: e.message.message,
             created_at: e.message.created_at,
             attachments: e.message.attachments,
-            unread_messages: (user.with_last_message?.unread_messages || 0) + 1
+            unread_messages: (user.last_message?.unread_messages || 0) + 1
           };
         }
 
@@ -449,66 +599,7 @@ onMounted(async () => {
       }
 
       // Handle different message events
-      switch (e.type) {
-        case 'sent':
-          const today = new Date().toLocaleDateString('en-US', { 
-            day: 'numeric',
-            month: 'short', 
-            year: 'numeric'
-          });
-          
-          if (!messages.value[today]) {
-            messages.value[today] = [];
-          }
-          messages.value[today].push(e.message);
-          updateMessageStatus(e.message, 'seen');
-          // Update last message for selected user
-          if (selectedUser.value) {
-            selectedUser.value.with_last_message = {
-              message: e.message.message,
-              created_at: e.message.created_at,
-              attachments: e.message.attachments
-            };
-          }
-          break;
-        case 'updated':
-
-        const dateKey = Object.keys(messages.value).find(date =>
-          messages.value[date].some((m: Message) => m.id === e.message.id)
-        );
-
-        if(dateKey) {
-          // for (const [date, messageGroup] of Object.entries(messages.value)) {
-            const index = messages.value[dateKey].findIndex((m: Message) => m.id === e.message.id);
-            if (index !== -1) {
-              messages.value[dateKey][index] = e.message;
-              // Update last message if needed
-              if (index === messages.value[dateKey].length - 1 && selectedUser.value) {
-                selectedUser.value.with_last_message = {
-                  message: e.message.message,
-                  created_at: e.message.created_at,
-                  attachments: e.message.attachments
-                };
-              }
-            }
-              // break;
-            // }
-          }
-          break;
-
-        case 'deleted':
-          for (const [date, messageGroup] of Object.entries(messages.value)) {
-            const index = messageGroup.findIndex((m: Message) => m.id === e.message.id);
-            if (index !== -1) {
-              messages.value[date].splice(index, 1);
-              if (messages.value[date].length === 0) {
-                delete messages.value[date];
-              }
-              break;
-            }
-          }
-          break;
-      }
+      handleMessageEvent(e.message,e.type);
     })
     // Listen for message status updates (delivered/seen)
     .listen('.MessageStatusEvent', (e: { messageIds: string[]; status: string; user_id: string }) => {
@@ -595,7 +686,61 @@ onMounted(async () => {
         chatUser.is_online = false;
       }
   });
-})
+
+  if (groups.value.length > 0) {
+    echo.private('group.messages')
+      .listen('.GroupMessageEvent', (e: any) => {
+        // Find the target group
+        let targetGroup = groups.value.find((g: Group) => g.id === e.message.group_id);
+        if (!targetGroup) return;
+
+        if (e.message.group_id !== selectedUser.value?.id && e.type === 'sent') {
+          // Update the last message for the corresponding group
+          targetGroup.last_message = {
+            message: e.message.message,
+            created_at: e.message.created_at,
+            attachments: e.message.attachments,
+          };
+          return;
+        }
+       if(e.message.sender_id !== loggedInUser.value?.id) {
+        handleMessageEvent(e.message, e.type);
+       }
+      }).listenForWhisper('typing', (e: { user: User }) => {
+        if (loggedInUser.value?.id === e.user.id) return;
+
+        isTyping.value = true;
+        const typingUsers = typingGroupMember.value?.split(', ');
+        if (typingUsers && !typingUsers.includes(e.user.first_name)) {
+          typingUsers.push(e.user.first_name); // Add the first_name of the typing user
+          typingGroupMember.value = typingUsers.join(', ');
+        }
+        if (typingTimeout.value) clearTimeout(typingTimeout.value);
+        
+        // Reset typing indicator after 3 seconds of no typing
+        typingTimeout.value = setTimeout(() => {
+          isTyping.value = false;
+          typingGroupMember.value = ''; // Pop the first_name of the typing user
+        }, 3000);
+    })
+    // Listen for stop typing events
+    .listenForWhisper('stopTyping', (e: { user: User }) => {
+      if (loggedInUser.value?.id !== e.user.id) {
+        let typingUsers = typingGroupMember.value?.split(', ');
+        const index = typingUsers ? typingUsers?.indexOf(e.user.first_name) : -1;
+        if (index !== -1) {
+          typingUsers.splice(index, 1);
+          typingGroupMember.value = typingUsers.join(', '); // Remove the first_name of the user who stopped typing
+        }
+        // if (typingUsers.length === 0) {
+          isTyping.value = false;
+          typingGroupMember.value = ''; // Pop the first_name of the typing user
+        // }
+      }
+    });
+  }
+});
+
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", checkScreenSize);
@@ -608,42 +753,76 @@ onBeforeUnmount(() => {
       <!-- Users List -->
       <v-col cols="12" md="3" :class="{'user-list':isMobile && isChatOpen}">
         <v-card>
-          <v-card-title class="py-4 px-4">
-            <span class="text-h6">Messages</span>
+          <v-card-title class="px-4">
+            <!-- <span class="text-h6">Messages</span> -->
+            <v-text-field v-model="search" placeholder="Search..." class="mt-2"></v-text-field>
+            <div class="d-flex justify-space-between">
+              <VTabs v-model="sidebarActiveTab" class="v-tabs--grow">
+                <VTab v-for="item in tabs" :key="item.icon" :value="item.tab">
+                  <VIcon size="20" start :icon="item.icon" />
+                  {{ item.title }}
+                </VTab>
+              </VTabs>
+            </div>
+
           </v-card-title>
 
           <v-list class="messages-container">
             <div>
-              <!-- Chat Users Section -->
-              <div class="pa-3">
-                <div class="d-flex justify-space-between align-center mb-2">
-                  <span class="text-h6">Chat Users</span>
-                  <v-chip color="primary" size="small">{{ chatUsersCount }}</v-chip>
-                </div>
-                    <UserListItem
-                      v-for="user in chatUsers"
-                      :key="user.id"
-                      :user="user"
-                      :selectedUser="selectedUser"
-                      :isChatUser="true"
-                      @select-user="selectUser"
-                    />
-                </div>
+              <VWindow v-model="sidebarActiveTab" class="disable-tab-transition" :touch="false">
+                  <!-- User -->
+                <VWindowItem value="user">
+                  <!-- Chat Users Section -->
+                  <div class="pa-3" v-if="chatUsers?.length">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                      <span class="text-h6">Chat Users</span>
+                      <v-chip color="primary" size="small">{{ chatUsersCount }}</v-chip>
+                    </div>
+                        <UserListItem
+                          v-for="user in chatUsers"
+                          :key="user.id"
+                          :user="user"
+                          :selectedUser="selectedUser"
+                          :isChatUser="true"
+                          @select-user="selectUser"
+                        />
+                  </div>
 
-              <!-- Contact Users Section -->
-              <div class="pa-3">
-                <div class="d-flex justify-space-between align-center mb-2">
-                  <span class="text-h6">Contacts</span>
-                  <v-chip color="secondary" size="small">{{ contactUsersCount }}</v-chip>
-                </div>
-                  <UserListItem
-                    v-for="user in contactUsers"
-                    :key="user.id"
-                    :user="user"
-                    :selectedUser="selectedUser"
-                    @select-user="selectUser"
-                  />
-              </div>
+                  <!-- Contact Users Section -->
+                  <div class="pa-3" v-if="contactUsers?.length">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                      <span class="text-h6">Contacts</span>
+                      <v-chip color="secondary" size="small">{{ contactUsersCount }}</v-chip>
+                    </div>
+                      <UserListItem
+                        v-for="user in contactUsers"
+                        :key="user.id"
+                        :user="user"
+                        :selectedUser="selectedUser"
+                        @select-user="selectUser"
+                      />
+                  </div>
+                </VWindowItem>
+
+                <!-- Group -->
+                <VWindowItem value="group">
+                     <!-- Group Section -->
+                  <div class="pa-3" v-if="chatUsers?.length">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                      <span class="text-h6">Group</span>
+                      <v-chip color="primary" size="small">{{ groupsCount }}</v-chip>
+                    </div>
+                        <GroupList
+                          v-for="group in groups"
+                          :key="group.id"
+                          :group="group"
+                          :selectedGroup="selectedUser"
+                          :isChatUser="true"
+                          @select-group="selectGroup"
+                        />
+                  </div>
+                </VWindowItem>
+              </VWindow>
             </div>
           </v-list>
         </v-card>
@@ -656,7 +835,7 @@ onBeforeUnmount(() => {
             <!-- Chat Header -->
             <v-card-title class="py-4 px-4 border-b d-flex justify-space-between mb-1 card-header-tabs">
          
-             <div class="d-flex align-center">
+             <div class="d-flex align-center" v-if="!isGroupMessage">
                 <VBadge
                   dot
                   location="bottom right"
@@ -672,6 +851,17 @@ onBeforeUnmount(() => {
               <div>
                 <div class="text-h6">{{ selectedUser.first_name }} {{ selectedUser.last_name }}</div>
                 <div class="text-subtitle-2">{{ selectedUser.email }}</div>
+              </div>
+             </div>
+
+             <div class="align-center d-flex" v-else>
+              <v-avatar size="40" class="mr-3">
+                <v-img v-if="selectedUser.image" :src="selectedUser.image" :alt="selectedUser.first_name" />
+                <span v-else >{{ avatarText(selectedUser.name) }}</span>
+              </v-avatar>
+              <div>
+                <div class="text-h6">{{ selectedUser.name }}</div>
+                <div class="text-sm">Member {{ selectedUser.group_members }}</div>
               </div>
              </div>
 
@@ -692,6 +882,7 @@ onBeforeUnmount(() => {
               :target="target"
               :distance="distance"
               :identifier="resetData"
+              :isGroupMessage="isGroupMessage"
               @infinite="loadMoreMessages"
               @deleteAttachment="deleteMessageAttachment"
               @itemClick="handleItemClick"
@@ -712,8 +903,11 @@ onBeforeUnmount(() => {
                   <v-col class="px-2">
                     <v-text-field v-model="newMessage" placeholder="Type a message..." variant="outlined"
                       density="compact" hide-details />
-                    <small v-if="isTyping" class="text-gray-700">
+                    <small v-if="isTyping && !isGroupMessage" class="text-gray-700">
                       {{ selectedUser.first_name }} is typing...
+                    </small>
+                    <small v-else-if="isTyping && isGroupMessage">
+                      {{ typingGroupMember }} is typing
                     </small>
                   </v-col>
 
@@ -795,7 +989,7 @@ onBeforeUnmount(() => {
 
 .messages-container {
   overflow-y: auto;
-  height: calc(100vh - 300px);
+  height: calc(100vh - 350px);
 
   &::-webkit-scrollbar {
     display: none; // Hide scrollbar

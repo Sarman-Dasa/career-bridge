@@ -10,6 +10,7 @@ const props = defineProps<{
   loggedInUser: User;
   loading: boolean;
   isLoadingMore: boolean;
+  isGroupMessage?:boolean;
 }>();
 
 const emit = defineEmits<{
@@ -94,20 +95,28 @@ defineExpose({showNewMessage})
           <div v-for="message in messages[date]" :key="message.id" class="mb-4">
           <div :class="[
             'd-flex',
-            message.sender_id === selectedUser.id ? 'justify-start' : 'justify-end'
+            message.sender_id !== loggedInUser?.id ? 'justify-start' : 'justify-end'
           ]">
             <!-- Sender Avatar -->
-            <v-avatar v-if="message.sender_id === selectedUser.id" size="32" class="mr-2">
+            <!-- For Group chat -->
+            
+            <v-avatar v-if="isGroupMessage && message.sender_id !== loggedInUser?.id" size="32" class="mr-2">
+              <v-img v-if="message.sender.profile_image" :src="message.sender.profile_image" :alt="message.sender" />
+              <span v-else>{{ avatarText(message.sender.full_name) }}</span>
+            </v-avatar>
+
+            <!-- For user chat -->
+            <v-avatar v-if="!isGroupMessage && message.sender_id !== loggedInUser?.id" size="32" class="mr-2">
               <v-img v-if="selectedUser.profile_image" :src="selectedUser.profile_image" :alt="selectedUser.first_name" />
               <span v-else>{{ avatarText(selectedUser.full_name) }}</span>
             </v-avatar>
 
             <div class="d-flex flex-column" :class="[
-              message.sender_id === selectedUser.id ? 'align-start' : 'align-end'
+              message.sender_id !== loggedInUser?.id ? 'align-start' : 'align-end'
             ]">
               <!-- Message Content -->
               <v-card v-if="message.message"
-                :class="[message.sender_id === selectedUser.id ? 'received' : 'send', 'message-card']"
+                :class="[message.sender_id !== loggedInUser?.id ? 'received' : 'send', 'message-card']"
                 class="mb-2" flat>
                 <div class="message-content">
                   <div class="d-flex justify-space-between">
@@ -145,7 +154,7 @@ defineExpose({showNewMessage})
             </div>
 
             <!-- Receiver Avatar -->
-            <v-avatar v-if="message.sender_id !== selectedUser.id" size="32" class="ml-2">
+            <v-avatar v-if="message.sender_id === loggedInUser?.id" size="32" class="ml-2">
               <v-img v-if="loggedInUser.profile_image" :src="loggedInUser.profile_image" />
               <span v-else>{{ avatarText(loggedInUser.full_name) }}</span>
             </v-avatar>

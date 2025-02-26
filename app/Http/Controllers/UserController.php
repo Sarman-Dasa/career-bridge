@@ -99,33 +99,41 @@ class UserController extends Controller
     {
         $usersQuery = User::where('id', '!=', auth()->id());
 
-        // Get users who have messages first
-        $usersWithMessages = (clone $usersQuery)
+        if (!empty($request->search)) {
+            $search = $request->search;
+            $usersQuery->where(function ($query) use ($search) {
+                $query->where('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$search}%"]);
+            });
+        }
+
+        // Clone the filtered query before applying message-related conditions
+        $usersWithMessagesQuery = clone $usersQuery;
+
+        // Get users who have messages
+        $usersWithMessages = $usersWithMessagesQuery
+            ->where(function ($query) {
+                $query->whereHas('messages', function ($subQuery) {
+                    $subQuery->where('sender_id', auth()->id())
+                        ->orWhere('receiver_id', auth()->id());
+                })->orWhereHas('receiverMessages', function ($subQuery) {
+                    $subQuery->where('sender_id', auth()->id())
+                        ->orWhere('receiver_id', auth()->id());
+                });
+            })
             ->select('id', 'first_name', 'last_name', 'profile_image', 'email')
-            ->whereHas('messages', function ($query) {
-                $query->where('sender_id', auth()->id())
-                    ->orWhere('receiver_id', auth()->id());
-            })->orWhereHas('receiverMessages', function ($query) {
-                $query->where('sender_id', auth()->id())
-                    ->orWhere('receiver_id', auth()->id());
-            })->where('id', '!=', auth()->id())
             ->get()
             ->map(function ($user) {
                 $lastMessage = $user->lastMessageWith(auth()->id());
 
                 // Count unread messages for the logged-in user from this user
-                // $unreadMessagesCount = Message::where('sender_id', $user->id)
-                //     ->where('receiver_id', auth()->id())
-                //     ->where('is_seen', false)
-                //     ->count();
-
-                // Get unread messages count using relationship
                 $unreadMessagesCount = $user->messages()
                     ->where('receiver_id', auth()->id())  // Messages received by logged-in user
                     ->where('is_seen', false)  // Unread messages
                     ->count();
 
-                $user->with_last_message = [
+                $user->last_message = [
                     'message' => $lastMessage->message ?? null,
                     'created_at' => $lastMessage->created_at ?? null,
                     'attachments' => $lastMessage->attachments ?? null,
@@ -133,19 +141,15 @@ class UserController extends Controller
                 ];
                 return $user;
             })
-            ->sortByDesc(function ($user) {
-                return $user->with_last_message['created_at'];
-            })->values();
-
+            ->sortByDesc(fn($user) => $user->last_message['created_at'])
+            ->values();
 
         $userIds = $usersWithMessages->pluck('id')->toArray();
 
         // Get users without messages
         $usersWithoutMessages = $usersQuery->whereNotIn('id', $userIds)
-            ->select('id', 'first_name', 'last_name', 'profile_image', 'email')->get();
-
-        // // Combine the collections with users with messages first
-        // $users = $usersWithMessages->concat($usersWithoutMessages);
+            ->select('id', 'first_name', 'last_name', 'profile_image', 'email')
+            ->get();
 
         return ok(__('strings.user.list'), [
             'chat_users' => $usersWithMessages,

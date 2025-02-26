@@ -6,6 +6,7 @@ use App\Http\Controllers\MessagesController;
 use App\Http\Controllers\PostCommentController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\GroupController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -82,5 +83,24 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('mark-all-delivered', 'markAllAsDelivered');
         Route::delete('delete-attachment/{messageId}/{attachmentId}', 'deleteMessageAttachment');
         Route::get('send-html-email', 'sendFile');
+        // Group message routes
+        Route::prefix('group')->group(function () {
+            Route::post('send', 'sendGroupMessage');
+            Route::post('receive-message',  'getGroupMessages');
+        });
+    });
+
+
+
+    // Group routes
+    Route::controller(GroupController::class)->prefix('group')->group(function () {
+        Route::post('/', 'list');
+        Route::post('create', 'create');
+        Route::put('update/{id}', 'update');
+        Route::delete('delete/{id}', 'delete');
+        Route::get('view/{id}', 'view');
+        Route::post('{groupId}/members', 'addMembers');
+        Route::delete('{groupId}/members/{memberId}', 'removeMember');
+        Route::put('{groupId}/members/{memberId}/role', 'updateMemberRole');
     });
 });

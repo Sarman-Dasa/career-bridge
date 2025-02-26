@@ -175,6 +175,11 @@ class User extends Authenticatable
         return $message;
     }
 
+    public function groups()
+    {
+        return $this->belongsToMany(Group::class, 'group_members', 'user_id', 'group_id');
+    }
+
     // public function withLastMessage()
     // {
     //     return $this->hasOne(Message::class, 'sender_id')
